@@ -47,7 +47,7 @@ status_t launch_elf(struct kprocess *proc, char *path, int priority,
 	assert(envp_strings);
 
 	struct vnode *vn;
-	status_t status = vfs_open(path, &vn);
+	status_t status = vfs_open(path, NULL, 0, &vn);
 	IF_ERR(status)
 	{
 		return status;

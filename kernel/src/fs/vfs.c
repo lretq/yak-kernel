@@ -71,11 +71,6 @@ static struct vfs_ops *lookup_fs(const char *name)
 	return ht_get(&filesystems, name, strlen(name));
 }
 
-#define VFS_LOOKUP_PARENT (1 << 0)
-
-status_t vfs_lookup_path(const char *path, struct vnode *cwd, int flags,
-			 struct vnode **out, char **last_comp);
-
 status_t vfs_mount(const char *path, char *fsname)
 {
 	struct vfs_ops *ops = lookup_fs(fsname);
@@ -106,7 +101,8 @@ exit:
 	return res;
 }
 
-status_t vfs_create(char *path, enum vtype type, struct vnode **out)
+status_t vfs_create(char *path, enum vtype type, struct vattr *attr,
+		    struct vnode **out)
 {
 	struct vnode *parent, *vn;
 	char *last_comp = NULL;
@@ -122,7 +118,7 @@ status_t vfs_create(char *path, enum vtype type, struct vnode **out)
 	size_t comp_size = strlen(last_comp) + 1;
 
 	assert(parent);
-	res = VOP_CREATE(parent, type, last_comp, &vn);
+	res = VOP_CREATE(parent, type, last_comp, attr, &vn);
 
 	VOP_UNLOCK(parent);
 	vnode_deref(parent);
@@ -136,7 +132,8 @@ status_t vfs_create(char *path, enum vtype type, struct vnode **out)
 	return res;
 }
 
-status_t vfs_symlink(char *link_path, char *dest_path, struct vnode **out)
+status_t vfs_symlink(char *link_path, char *dest_path, struct vattr *attr,
+		     struct vnode **out)
 {
 	char *last_comp;
 	struct vnode *parent, *vn;
@@ -150,7 +147,7 @@ status_t vfs_symlink(char *link_path, char *dest_path, struct vnode **out)
 	size_t comp_size = strlen(last_comp) + 1;
 
 	assert(parent);
-	rv = VOP_SYMLINK(parent, last_comp, dest_path, &vn);
+	rv = VOP_SYMLINK(parent, last_comp, dest_path, attr, &vn);
 
 	VOP_UNLOCK(parent);
 	vnode_deref(parent);
@@ -216,8 +213,8 @@ status_t vfs_write(struct vnode *vp, voff_t offset, const void *buf,
 		return vp->ops->vn_write(vp, offset, buf, length, writtenp);
 	}
 
-	struct vm_object *obj = vp->vobj;
-	assert(obj);
+	struct vm_object *vobj = vp->vobj;
+	assert(vobj);
 
 	if (length == 0)
 		return YAK_SUCCESS;
@@ -243,7 +240,8 @@ status_t vfs_write(struct vnode *vp, voff_t offset, const void *buf,
 
 		struct page *pg;
 		// Lookup or allocate the page
-		status_t res = vm_lookuppage(obj, pageoff, 0, &pg);
+		// XXX: should this wire pages?
+		status_t res = vm_lookuppage(vobj, pageoff, 0, &pg);
 		IF_ERR(res)
 		{
 			return res;
@@ -319,10 +317,11 @@ status_t vfs_read(struct vnode *vn, voff_t offset, void *buf, size_t length,
 	return YAK_SUCCESS;
 }
 
-status_t vfs_open(char *path, struct vnode **out)
+status_t vfs_open(char *path, struct vnode *cwd, int lookup_flags,
+		  struct vnode **out)
 {
 	struct vnode *vn;
-	status_t res = vfs_lookup_path(path, NULL, 0, &vn, NULL);
+	status_t res = vfs_lookup_path(path, cwd, lookup_flags, &vn, NULL);
 	IF_ERR(res)
 	{
 		return res;
@@ -370,6 +369,7 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 		current = (path_[0] == '/') ? vfs_getroot() :
 					      process_getcwd(curproc());
 	} else {
+		assert(path_[0] != '/');
 		current = cwd;
 	}
 
@@ -392,10 +392,20 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 	// current is returned with a reference
 	VOP_LOCK(current);
 
-	if (pathlen == 1 && path_[0] == '/') {
-		*out = current;
-		assert(current->type == VDIR);
-		return YAK_SUCCESS;
+	if (pathlen == 1) {
+		if (path_[0] == '/') {
+			if (last_comp)
+				*last_comp = strndup("/", 2);
+			*out = current;
+			assert(current->type == VDIR);
+			return YAK_SUCCESS;
+		} else if (path_[0] == '.') {
+			if (last_comp)
+				*last_comp = strndup(".", 2);
+			*out = current;
+			assert(current->type == VDIR);
+			return YAK_SUCCESS;
+		}
 	}
 
 	char *comp = path;
@@ -414,6 +424,16 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			if (last_comp)
 				*last_comp = strndup(comp, strlen(comp) + 1);
 			return YAK_SUCCESS;
+		}
+
+		if (comp[0] == '.') {
+			if (comp[1] == '\0') {
+				next = current;
+				goto advance;
+			} else if (comp[2] == '.' && comp[3] == '\0') {
+				// XXX: I think I will have to handle .. differently
+				// (mountpoint traversal?)
+			}
 		}
 
 		status_t res = VOP_LOOKUP(current, comp, &next);
@@ -443,6 +463,11 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 		next = resolved;
 
 		if (next->type == VLNK) {
+			if (is_last && (flags & VFS_LOOKUP_NOFOLLOW)) {
+				// intermediary symlinks may be followed
+				goto skip_follow;
+			}
+
 			pr_debug("lookup link: %s\n", comp);
 
 			char *dest;
@@ -479,7 +504,11 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			next = destvn;
 		}
 
+skip_follow:
+
 		vnode_deref(current);
+
+advance:
 		current = next;
 
 		if (is_last) {

@@ -190,7 +190,7 @@ status_t elf_load_path(char *path, struct kprocess *process,
 		       struct load_info *info, uintptr_t base)
 {
 	struct vnode *vn;
-	status_t status = vfs_open(path, &vn);
+	status_t status = vfs_open(path, NULL, 0, &vn);
 	IF_ERR(status)
 	{
 		return status;

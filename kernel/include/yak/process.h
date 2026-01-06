@@ -50,6 +50,13 @@ DECLARE_REFMAINT(pgrp);
 struct kprocess {
 	pid_t pid;
 
+	pid_t ppid;
+	// cached pointer
+	struct kprocess *parent_process;
+
+	int uid, euid;
+	int gid, egid;
+
 	struct spinlock thread_list_lock;
 	size_t thread_count;
 	thread_list_t thread_list;
@@ -66,10 +73,6 @@ struct kprocess {
 
 	struct spinlock fs_lock;
 	struct vnode *cwd;
-
-	pid_t ppid;
-	// cached pointer
-	struct kprocess *parent_process;
 
 	LIST_ENTRY(kprocess) session_entry;
 	LIST_ENTRY(kprocess) pgrp_entry;

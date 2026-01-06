@@ -12,7 +12,7 @@
 	X(SYS_WRITE, sys_write)             \
 	X(SYS_READ, sys_read)               \
 	X(SYS_CLOSE, sys_close)             \
-	X(SYS_OPEN, sys_open)               \
+	X(SYS_OPENAT, sys_openat)           \
 	X(SYS_FORK, sys_fork)               \
 	X(SYS_EXECVE, sys_execve)           \
 	X(SYS_MMAP, sys_mmap)               \
@@ -29,9 +29,9 @@
 	X(SYS_SETSID, sys_setsid)           \
 	X(SYS_SETPGID, sys_setpgid)         \
 	X(SYS_FALLOCATE, sys_fallocate)     \
-	X(SYS_ISATTY, sys_isatty)           \
 	X(SYS_FCNTL, sys_fcntl)             \
 	X(SYS_IOCTL, sys_ioctl)             \
+	X(SYS_FSTATAT, sys_fstatat)         \
 	X(SYS_ARCHCTL, sys_archctl)
 
 #define X(num, fn) extern long fn();

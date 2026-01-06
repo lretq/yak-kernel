@@ -1,5 +1,7 @@
 #include <stddef.h>
+#include <string.h>
 #include <yak/file.h>
+#include <yak/process.h>
 #include <yak/mutex.h>
 #include <yak/types.h>
 #include <yak/heap.h>
@@ -9,43 +11,200 @@
 #include <yak/log.h>
 #include <yak/fs/vfs.h>
 #include <yak/status.h>
+#include <yak-abi/stat.h>
 #include <yak-abi/errno.h>
 #include <yak-abi/seek-whence.h>
 #include <yak-abi/fcntl.h>
+#include <yak-abi/mode_t.h>
 
-DEFINE_SYSCALL(SYS_OPEN, open, char *filename, int flags, int mode)
+static struct file *getfile_ref(struct kprocess *proc, int fd)
 {
-	pr_debug("sys_open: %s %d %d\n", filename, flags, mode);
-	struct kprocess *proc = curproc();
+	struct file *file;
 
-	unsigned int file_flags = 0;
+	guard(mutex)(&proc->fd_mutex);
+
+	struct fd *desc = fd_safe_get(proc, fd);
+	if (!desc) {
+		return NULL;
+	}
+
+	file = desc->file;
+	file_ref(file);
+
+	return file;
+}
+
+static unsigned int convert_accmode(unsigned int flags)
+{
 	switch (flags & O_ACCMODE) {
 	case O_RDONLY:
-		file_flags |= FILE_READ;
-		break;
+		return FILE_READ;
 	case O_WRONLY:
-		file_flags |= FILE_WRITE;
-		break;
+		return FILE_WRITE;
 	case O_RDWR:
-		file_flags |= FILE_READ | FILE_WRITE;
-		break;
+		return FILE_READ | FILE_WRITE;
 	default:
+		return -1;
+	}
+}
+
+static void vattr_fill(struct kprocess *proc, struct vattr *attr, mode_t mode)
+{
+	// XXX: correct time
+	struct timespec now = time_now();
+	attr->mtime = now;
+	attr->atime = now;
+	attr->uid = proc->euid;
+	attr->gid = proc->egid;
+	attr->mode = mode;
+}
+
+// On sucess: Returns a referenced VNODE
+int dirfd_get(struct kprocess *proc, int dirfd, char *path, int flags,
+	      struct vnode **out)
+{
+	if (path == NULL || *path == '\0') {
+		if (!(flags & AT_EMPTY_PATH))
+			return ENOENT;
+
+		struct file *f = getfile_ref(proc, dirfd);
+		if (!f) {
+			return EBADF;
+		}
+
+		guard_ref_adopt(f, file);
+
+		vnode_ref(f->vnode);
+
+		*out = f->vnode;
+		return 0;
+	}
+
+	if (*path == '/') {
+		// ignore dirfd
+		// vfs lookup will get the root
+		*out = NULL;
+		return 0;
+	}
+
+	if (dirfd == AT_FDCWD) {
+		// unfalliable
+		*out = process_getcwd(proc);
+		return 0;
+	}
+
+	struct file *f = getfile_ref(proc, dirfd);
+
+	if (!f) {
+		return EBADF;
+	}
+
+	if (f->vnode->type) {
+		return ENOTDIR;
+	}
+
+	guard_ref_adopt(f, file);
+
+	vnode_ref(f->vnode);
+
+	*out = f->vnode;
+	return 0;
+}
+
+DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
+	       struct stat *buf, int flags)
+{
+	struct kprocess *proc = curproc();
+	size_t path_len = 0;
+	char *path = NULL;
+	if (user_path != NULL) {
+		path_len = strlen(user_path);
+		path = kmalloc(path_len + 1);
+		memcpy(path, user_path, path_len + 1);
+	}
+
+	struct vnode *from_node = NULL;
+	int dirfd_res = dirfd_get(proc, dirfd, path, flags, &from_node);
+	if (dirfd_res != 0) {
+		return SYS_ERR(dirfd_res);
+	}
+
+	guard_ref_adopt(from_node, vnode);
+
+	pr_debug("fstatat: %s, from_node: %p (is AT_FDCWD: %d)\n", path, from_node, dirfd == AT_FDCWD);
+	struct vnode *vn;
+	RET_ERRNO_ON_ERR(vfs_lookup_path(
+		path, from_node,
+		(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0, &vn,
+		NULL));
+
+	struct vattr attr;
+	VOP_GETATTR(vn, &attr);
+
+	vnode_deref(vn);
+	kmutex_release(&vn->lock);
+
+	struct stat stat;
+	stat.st_dev = 0;
+	stat.st_ino = attr.inode;
+	stat.st_mode = attr.mode;
+	stat.st_nlink = attr.nlinks;
+	stat.st_uid = attr.uid;
+	stat.st_gid = attr.gid;
+	stat.st_rdev = 0;
+	stat.st_size = vn->filesize;
+	stat.st_atim = attr.atime;
+	stat.st_mtim = attr.mtime;
+	stat.st_ctim = attr.ctime;
+	stat.st_btim = attr.btime;
+	stat.st_blksize = attr.block_size;
+	stat.st_blocks = attr.block_count;
+
+	memcpy(buf, &stat, sizeof(struct stat));
+
+	return SYS_OK(0);
+}
+
+// Userspace shall implement open() using openat()!
+DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
+	       mode_t mode)
+{
+	struct kprocess *proc = curproc();
+
+	int file_flags = convert_accmode(flags);
+	if (file_flags == -1)
 		return SYS_ERR(EINVAL);
+
+	size_t path_len = 0;
+	char *path = NULL;
+	if (user_path != NULL) {
+		path_len = strlen(user_path);
+		path = kmalloc(path_len + 1);
+		memcpy(path, user_path, path_len + 1);
+	}
+
+	struct vnode *from_node = NULL;
+	int dirfd_res = dirfd_get(proc, dirfd, path, flags, &from_node);
+	if (dirfd_res != 0) {
+		return SYS_ERR(dirfd_res);
 	}
 
 	struct vnode *vn;
-	status_t res = vfs_open(filename, &vn);
-
+	status_t res = vfs_open(path, from_node,
+				(flags & O_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0,
+				&vn);
 	if (res == YAK_NOENT) {
 		if (flags & O_CREAT) {
-			RET_ERRNO_ON_ERR(vfs_create(filename, VREG, &vn));
+			struct vattr attr;
+			vattr_fill(proc, &attr, mode);
+			RET_ERRNO_ON_ERR(vfs_create(path, VREG, &attr, &vn));
 		} else {
-			// file does not exist
+			// file does not exist, we also dont want to create it
 			return SYS_ERR(ENOENT);
 		}
-	} else {
-		RET_ERRNO_ON_ERR(res);
 	}
+
+	RET_ERRNO_ON_ERR(res);
 
 	guard(mutex)(&proc->fd_mutex);
 
@@ -231,32 +390,6 @@ DEFINE_SYSCALL(SYS_FALLOCATE, fallocate, int fd, int mode, off_t offset,
 	status_t rv = VOP_FALLOCATE(file->vnode, mode, offset, size);
 	RET_ERRNO_ON_ERR(rv);
 	return SYS_OK(0);
-}
-
-DEFINE_SYSCALL(SYS_ISATTY, isatty, int fd)
-{
-	struct kprocess *proc = curproc();
-	struct file *file;
-
-	{
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			return SYS_ERR(EBADF);
-		}
-		file = desc->file;
-		file_ref(file);
-	}
-
-	guard_ref_adopt(file, file);
-
-	if (file->vnode->type == VCHR && file->vnode->ops->vn_isatty != NULL) {
-		if (VOP_ISATTY(file->vnode)) {
-			return SYS_OK(0);
-		}
-	}
-
-	return SYS_ERR(ENOTTY);
 }
 
 DEFINE_SYSCALL(SYS_FCNTL, fcntl, int fd, int op, size_t arg)

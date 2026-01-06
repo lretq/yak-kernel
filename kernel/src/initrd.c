@@ -101,18 +101,26 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 
 		zero_filled = 0;
 
+#define HDR_OFLD(f) decode_octal((hdr)->f, sizeof((hdr)->f))
+		struct vattr attr;
+		attr.mode = HDR_OFLD(mode);
+		attr.uid = HDR_OFLD(uid);
+		attr.gid = HDR_OFLD(gid);
+		time_t mtime = HDR_OFLD(mtime);
+		attr.mtime = (struct timespec){ .tv_sec = mtime, .tv_nsec = 0 };
+		attr.atime = attr.mtime;
+
 		switch (hdr->filetype) {
 		case TAR_SYM:
 			//pr_debug("create sym %s -> %s\n", pathbuf, hdr->linkname);
-			vfs_symlink(pathbuf, hdr->linkname, &vn);
+			vfs_symlink(pathbuf, hdr->linkname, &attr, &vn);
 			break;
 
 		case TAR_REG:
 			//pr_debug("create file %s\n", pathbuf);
-			EXPECT(vfs_create(pathbuf, VREG, &vn));
+			EXPECT(vfs_create(pathbuf, VREG, &attr, &vn));
 
-			size_t size = decode_octal(hdr->filesize,
-						   sizeof(hdr->filesize));
+			size_t size = HDR_OFLD(filesize);
 
 			size_t written = -1;
 			EXPECT(vfs_write(vn, 0, (data + pos), size, &written));
@@ -122,7 +130,7 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 
 		case TAR_DIR:
 			//pr_debug("create dir %s\n", pathbuf);
-			EXPECT(vfs_create(pathbuf, VDIR, &vn));
+			EXPECT(vfs_create(pathbuf, VDIR, &attr, &vn));
 
 			break;
 
@@ -130,6 +138,8 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 			break;
 		}
 	}
+
+#undef HDR_OFLD
 
 	pr_debug("unpack complete\n");
 }

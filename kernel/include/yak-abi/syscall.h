@@ -38,7 +38,7 @@
 #define syscall_err(...) (syscall(__VA_ARGS__).err)
 
 enum {
-	SYS_OPEN,
+	SYS_OPENAT = 1,
 	SYS_CLOSE,
 	SYS_READ,
 	SYS_WRITE,
@@ -60,9 +60,9 @@ enum {
 	SYS_ARCHCTL,
 	SYS_SLEEP,
 	SYS_FALLOCATE,
-	SYS_ISATTY,
 	SYS_FCNTL,
 	SYS_IOCTL,
+	SYS_FSTATAT,
 	SYS_DEBUG_SLEEP,
 	SYS_DEBUG_LOG,
 };

@@ -214,7 +214,8 @@ uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle handle,
 	status_t rv;
 
 	if (ms_timeout == 0) {
-		rv = sched_wait_single(handle, WAIT_MODE_POLL, WAIT_TYPE_ANY, POLL_ONCE);
+		rv = sched_wait_single(handle, WAIT_MODE_POLL, WAIT_TYPE_ANY,
+				       POLL_ONCE);
 		goto exit;
 	} else if (ms_timeout == 0xFFFF) {
 		ms_timeout = TIMEOUT_INFINITE;
@@ -222,12 +223,13 @@ uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle handle,
 		ms_timeout = MSTIME(ms_timeout);
 	}
 
-	rv = sched_wait_single(handle, WAIT_MODE_BLOCK, WAIT_TYPE_ANY, ms_timeout);
+	rv = sched_wait_single(handle, WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
+			       ms_timeout);
 
 exit:
 	if (IS_OK(rv)) {
 		return UACPI_STATUS_OK;
-	} 
+	}
 
 	return UACPI_STATUS_TIMEOUT;
 }
