@@ -131,6 +131,13 @@ typedef unsigned int tcflag_t;
 
 #endif
 
+struct winsize {
+	unsigned short ws_row;
+	unsigned short ws_col;
+	unsigned short ws_xpixel;
+	unsigned short ws_ypixel;
+};
+
 struct termios {
 	tcflag_t c_iflag;
 	tcflag_t c_oflag;

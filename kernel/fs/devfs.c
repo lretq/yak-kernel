@@ -57,7 +57,7 @@ static status_t devfs_inactive(struct vnode *vn)
 }
 
 static status_t devfs_create(struct vnode *parent, enum vtype type, char *name,
-			     struct vnode **out)
+			     struct vattr *attr, struct vnode **out)
 {
 	if (type != VCHR && type != VBLK && type != VDIR)
 		return YAK_NOT_SUPPORTED;
@@ -98,7 +98,7 @@ static status_t devfs_create(struct vnode *parent, enum vtype type, char *name,
 }
 
 static status_t devfs_symlink(struct vnode *parent, char *name, char *path,
-			      struct vnode **out)
+			      struct vattr *attr, struct vnode **out)
 {
 	return YAK_NOT_SUPPORTED;
 }
@@ -210,14 +210,6 @@ static status_t devfs_ioctl(struct vnode *vn, unsigned long com, void *data,
 	return node->dev_ops->dev_ioctl(node->minor, com, data, ret);
 }
 
-static bool devfs_isatty(struct vnode *vn)
-{
-	struct devfs_node *node = (struct devfs_node *)vn;
-	if (!node->dev_ops->dev_isatty)
-		return false;
-	return node->dev_ops->dev_isatty(node->minor);
-}
-
 static struct vn_ops devfs_vn_op = {
 	.vn_lookup = devfs_lookup,
 	.vn_create = devfs_create,
@@ -231,7 +223,6 @@ static struct vn_ops devfs_vn_op = {
 	.vn_write = devfs_write,
 	.vn_open = devfs_open,
 	.vn_ioctl = devfs_ioctl,
-	.vn_isatty = devfs_isatty,
 };
 
 static status_t devfs_mount(struct vnode *vn);
@@ -305,7 +296,8 @@ status_t devfs_register(char *name, int type, int major, int minor,
 {
 	assert(shared_devfs);
 	struct vnode *vn = devfs_getroot(&shared_devfs->vfs);
-	EXPECT(VOP_CREATE(vn, type, name, &vn));
+	struct vattr attr;
+	EXPECT(VOP_CREATE(vn, type, name, &attr, &vn));
 	struct devfs_node *dnode = (struct devfs_node *)vn;
 	dnode->major = major;
 	dnode->minor = minor;

@@ -26,6 +26,8 @@ struct tty_ldisc_ops {
 			  size_t *written_bytes);
 	void (*flush)(struct tty *tty);
 	void (*attach)(struct tty *tty);
+	status_t (*ioctl)(struct tty *tty, unsigned long com, void *data,
+			  int *ret);
 };
 
 // processing flows:

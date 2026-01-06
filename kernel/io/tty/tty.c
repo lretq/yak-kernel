@@ -1,6 +1,6 @@
+#include <string.h>
 #include <yak/kevent.h>
 #include <yak/ringbuffer.h>
-#include <string.h>
 #include <yak/tty.h>
 #include <yak/cpudata.h>
 #include <yak/mutex.h>
@@ -8,6 +8,7 @@
 #include <yak/fs/devfs.h>
 #include <yak/log.h>
 #include <yak/heap.h>
+#include <yak-abi/ioctls.h>
 
 #define MAX_TTY 64
 
@@ -126,16 +127,50 @@ status_t tty_open(int minor, struct vnode **vp)
 	return YAK_SUCCESS;
 }
 
-static bool tty_isatty(int minor)
+status_t tty_core_ioctl(struct tty *tty, unsigned long com, void *data,
+			int *ret)
 {
-	return true;
+	switch (com) {
+	case TIOCGWINSZ:
+		struct winsize *wsz = data;
+		wsz->ws_row = 80;
+		wsz->ws_col = 25;
+		wsz->ws_xpixel = 0;
+		wsz->ws_ypixel = 0;
+		return YAK_SUCCESS;
+	case TIOCGPGRP:
+	case TIOCSPGRP:
+		return YAK_SUCCESS;
+	default:
+		return YAK_NOTTY;
+	}
+}
+
+status_t tty_ioctl(int minor, unsigned long com, void *data, int *ret)
+{
+	struct tty *tty = ttys[minor];
+	assert(tty);
+	switch (com) {
+	case TIOCSCTTY:
+	case TIOCNOTTY:
+	case TIOCGWINSZ:
+	case TIOCSWINSZ:
+	case TIOCGPGRP:
+	case TIOCSPGRP:
+		return tty_core_ioctl(tty, com, data, ret);
+	case TCGETS:
+	case TCSETS:
+		return tty->ldisc_ops->ioctl(tty, com, data, ret);
+	default:
+		return YAK_NOTTY;
+	}
 }
 
 struct device_ops tty_ops = (struct device_ops){
 	.dev_read = tty_read,
 	.dev_write = tty_write,
 	.dev_open = tty_open,
-	.dev_isatty = tty_isatty,
+	.dev_ioctl = tty_ioctl,
 };
 
 struct tty *tty_create(const char *name, struct tty_driver_ops *driver_ops,

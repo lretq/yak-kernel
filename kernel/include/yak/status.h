@@ -29,6 +29,7 @@ typedef enum status {
 	YAK_MFILE, /* process has too many opened files */
 	YAK_PERM_DENIED,
 	YAK_BADF,
+	YAK_NOTTY,
 } status_t;
 
 #define IS_OK(x) (likely((x) == YAK_SUCCESS))

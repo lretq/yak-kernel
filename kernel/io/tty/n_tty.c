@@ -1,4 +1,6 @@
+#include <string.h>
 #include <yak-abi/termios.h>
+#include <yak-abi/ioctls.h>
 #include <yak/mutex.h>
 #include <yak/ringbuffer.h>
 #include <yak/sched.h>
@@ -137,11 +139,33 @@ static void flush(struct tty *tty)
 		tty->driver_ops->flush(tty);
 }
 
+static status_t ioctl(struct tty *tty, unsigned long com, void *data, int *ret)
+{
+	switch (com) {
+	case TCGETS: {
+		struct termios *arg = data;
+		memcpy(arg, &tty->termios, sizeof(struct termios));
+		break;
+	}
+	case TCSETS: {
+		const struct termios *arg = data;
+		memcpy(&tty->termios, arg, sizeof(struct termios));
+		tty->driver_ops->set_termios(tty, &tty->termios);
+		break;
+	}
+	default:
+		return YAK_NOTTY;
+	}
+
+	return YAK_SUCCESS;
+}
+
 struct tty_ldisc_ops n_tty_ldisc = {
 	.receive_char = receive_char,
 	.write = write,
 	.read = read,
 	.flush = flush,
+	.ioctl = ioctl,
 };
 
 struct tty_ldisc_ops *get_n_tty_ldisc()
