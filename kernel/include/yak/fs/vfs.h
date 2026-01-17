@@ -14,6 +14,7 @@
 #include <yak-abi/mode_t.h>
 #include <yak-abi/nlink_t.h>
 #include <yak-abi/uid_t.h>
+#include <yak-abi/stat.h>
 
 struct vm_map;
 
@@ -41,8 +42,59 @@ enum vtype {
 	VSOCK,
 };
 
-#define DT_REG 1
-#define DT_DIR 3
+static inline mode_t vtype_to_mode(enum vtype t)
+{
+	switch (t) {
+	case VREG:
+		return S_IFREG;
+	case VBLK:
+		return S_IFBLK;
+	case VDIR:
+		return S_IFDIR;
+	case VCHR:
+		return S_IFCHR;
+	case VFIFO:
+		return S_IFIFO;
+	case VLNK:
+		return S_IFLNK;
+	case VSOCK:
+		return S_IFSOCK;
+	default:
+		__builtin_unreachable();
+	}
+}
+
+#define DT_UNKNOWN 0
+#define DT_FIFO 1
+#define DT_CHR 2
+#define DT_DIR 4
+#define DT_BLK 6
+#define DT_REG 8
+#define DT_LNK 10
+#define DT_SOCK 12
+#define DT_WHT 14
+
+static inline unsigned char vtype_to_dtype(enum vtype t)
+{
+	switch (t) {
+	case VREG:
+		return DT_REG;
+	case VBLK:
+		return DT_BLK;
+	case VDIR:
+		return DT_DIR;
+	case VCHR:
+		return DT_CHR;
+	case VFIFO:
+		return DT_FIFO;
+	case VLNK:
+		return DT_LNK;
+	case VSOCK:
+		return DT_SOCK;
+	default:
+		return DT_UNKNOWN;
+	}
+}
 
 #define SETATTR_MODE (1 << 0)
 #define SETATTR_UID (1 << 1)

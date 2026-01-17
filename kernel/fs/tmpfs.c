@@ -192,8 +192,9 @@ static status_t tmpfs_getdents(struct vnode *vn, struct dirent *buf,
 		d->d_ino = child->vattr.inode;
 		d->d_off = 0; // ?
 		d->d_reclen = (unsigned short)reclen;
-		d->d_type = child->vnode.type; // DT_* = V*
-		memcpy(d->d_name, name, namelen);
+		d->d_type = vtype_to_dtype(child->vnode.type);
+		memcpy(d->d_name, name, elm->key_len);
+		d->d_name[elm->key_len] = '\0';
 
 		outp += reclen;
 		remaining -= reclen;
