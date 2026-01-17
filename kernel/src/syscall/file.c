@@ -524,3 +524,76 @@ DEFINE_SYSCALL(SYS_IOCTL, ioctl, int fd, unsigned long op, void *argp)
 	RET_ERRNO_ON_ERR(rv);
 	return SYS_OK(ret);
 }
+
+DEFINE_SYSCALL(SYS_FCHDIR, fchdir, int fd)
+{
+	struct kprocess *proc = curproc();
+	struct file *file;
+
+	{
+		guard(mutex)(&proc->fd_mutex);
+		struct fd *desc = fd_safe_get(proc, fd);
+		if (!desc) {
+			return SYS_ERR(EBADF);
+		}
+		file = desc->file;
+		file_ref(file);
+	}
+
+	guard_ref_adopt(file, file);
+
+	if (file->vnode->type != VDIR) {
+		return SYS_ERR(ENOTDIR);
+	}
+
+	vnode_ref(file->vnode);
+	process_setcwd(proc, file->vnode);
+
+	return SYS_OK(0);
+}
+
+DEFINE_SYSCALL(SYS_CHDIR, chdir, const char *path)
+{
+	pr_debug("chdir(%s)\n", path);
+
+	struct kprocess *proc = curproc();
+
+	struct vnode *vn;
+	RET_ERRNO_ON_ERR(vfs_lookup_path(path, NULL, 0, &vn, NULL));
+
+	process_setcwd(proc, vn);
+
+	VOP_UNLOCK(vn);
+
+	return SYS_OK(0);
+}
+
+DEFINE_SYSCALL(SYS_GETDENTS, getdents, int fd, void *buffer, size_t max_size)
+{
+	pr_debug("getdents(%d, %p, %ld)\n", fd, buffer, max_size);
+	struct kprocess *proc = curproc();
+	struct file *file;
+
+	{
+		guard(mutex)(&proc->fd_mutex);
+		struct fd *desc = fd_safe_get(proc, fd);
+		if (!desc) {
+			return SYS_ERR(EBADF);
+		}
+		file = desc->file;
+		file_ref(file);
+	}
+
+	guard_ref_adopt(file, file);
+
+	if (file->vnode->type != VDIR) {
+		return SYS_ERR(ENOTDIR);
+	}
+
+	struct vnode *vn = file->vnode;
+
+	size_t bytes_read;
+	RET_ERRNO_ON_ERR(VOP_GETDENTS(vn, buffer, max_size, &bytes_read));
+
+	return SYS_OK(bytes_read);
+}

@@ -32,6 +32,9 @@
 	X(SYS_FCNTL, sys_fcntl)             \
 	X(SYS_IOCTL, sys_ioctl)             \
 	X(SYS_FSTATAT, sys_fstatat)         \
+	X(SYS_CHDIR, sys_chdir)             \
+	X(SYS_FCHDIR, sys_fchdir)           \
+	X(SYS_GETDENTS, sys_getdents)       \
 	X(SYS_ARCHCTL, sys_archctl)
 
 #define X(num, fn) extern long fn();
