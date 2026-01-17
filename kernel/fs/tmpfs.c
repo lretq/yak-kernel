@@ -301,13 +301,14 @@ static status_t tmpfs_mount(struct vnode *vn)
 	fs->seq_ino = 1;
 
 	vnode_ref(vn);
-	fs->vfs.vnodecovered = vn;
 
 	fs->vfs.ops = &tmpfs_op;
 
-	vn->mountedvfs = &fs->vfs;
+	vn->mounted_vfs = &fs->vfs;
 
 	fs->root = create_node(&fs->vfs, VDIR);
+
+	fs->root->vnode.node_covered = vn;
 
 	return YAK_SUCCESS;
 }

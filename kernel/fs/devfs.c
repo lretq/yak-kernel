@@ -247,7 +247,7 @@ static status_t devfs_mount(struct vnode *vn)
 {
 	if (shared_devfs) {
 		vnode_ref(vn);
-		vn->mountedvfs = &shared_devfs->vfs;
+		vn->mounted_vfs = &shared_devfs->vfs;
 		return YAK_SUCCESS;
 	}
 
@@ -255,11 +255,13 @@ static status_t devfs_mount(struct vnode *vn)
 	shared_devfs->root = NULL;
 	shared_devfs->seq_ino = 1;
 	shared_devfs->vfs.ops = &devfs_op;
-	shared_devfs->vfs.vnodecovered = vn;
 
 	vnode_ref(vn);
 
-	vn->mountedvfs = &shared_devfs->vfs;
+	vn->mounted_vfs = &shared_devfs->vfs;
+	VFS_GETROOT(&shared_devfs->vfs);
+	shared_devfs->root->vnode.node_covered = vn;
+
 	return YAK_SUCCESS;
 }
 

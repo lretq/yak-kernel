@@ -21,7 +21,6 @@ struct vnode;
 
 struct vfs {
 	struct vfs_ops *ops;
-	struct vnode *vnodecovered;
 };
 
 struct vfs_ops {
@@ -102,11 +101,14 @@ struct vnode {
 	struct kmutex lock;
 
 	struct vfs *vfs;
-	struct vfs *mountedvfs;
+	struct vfs *mounted_vfs;
+	struct vnode *node_covered;
 
 	size_t filesize;
 
 	struct vm_object *vobj;
+
+	int flags;
 };
 
 struct dirent {
@@ -167,9 +169,11 @@ struct vn_ops {
 	(vn)->refcnt = 1;                  \
 	kmutex_init(&(vn)->lock, "vnode"); \
 	(vn)->vfs = vfs_;                  \
-	(vn)->mountedvfs = NULL;           \
+	(vn)->mounted_vfs = NULL;          \
+	(vn)->node_covered = NULL;         \
 	(vn)->filesize = 0;                \
-	(vn)->vobj = NULL;
+	(vn)->vobj = NULL;                 \
+	(vn)->flags = 0;
 
 #define VOP_LOOKUP(vp, name, out) vp->ops->vn_lookup(vp, name, out)
 

@@ -164,11 +164,19 @@ status_t vfs_symlink(char *link_path, char *dest_path, struct vattr *attr,
 static struct vnode *resolve(struct vnode *vn)
 {
 	assert(vn != NULL);
-	if (vn->mountedvfs) {
-		return resolve(VFS_GETROOT(vn->mountedvfs));
+	if (vn->mounted_vfs) {
+		return resolve(VFS_GETROOT(vn->mounted_vfs));
 	}
 
 	// TODO: handle links
+
+	return vn;
+}
+
+static struct vnode *resolve_upward(struct vnode *vn)
+{
+	while (vn->node_covered != NULL)
+		vn = vn->node_covered;
 
 	return vn;
 }
@@ -426,42 +434,52 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			return YAK_SUCCESS;
 		}
 
-		if (comp[0] == '.') {
-			if (comp[1] == '\0') {
+		if (strcmp(comp, "..") == 0) {
+			struct vnode *root = resolve(root_node);
+			assert(root);
+			// if at VFS root, skip '..'
+			if (root == current) {
 				next = current;
 				goto advance;
-			} else if (comp[2] == '.' && comp[3] == '\0') {
-				// XXX: I think I will have to handle .. differently
-				// (mountpoint traversal?)
+			}
+
+			if (current->node_covered) {
+				struct vnode *vn = resolve_upward(current);
+				if (vn != current) {
+					pr_warn("found mountpoint?\n");
+					assert(!"todo");
+				}
 			}
 		}
 
 		status_t res = VOP_LOOKUP(current, comp, &next);
-		IF_ERR(res)
-		{
+		if (IS_ERR(res)) {
 			VOP_UNLOCK(current);
 			vnode_deref(current);
 			return res;
 		}
 
-		vnode_ref(next);
-		VOP_LOCK(next);
+		// might happen when comp = dot
+		if (current != next) {
+			vnode_ref(next);
+			VOP_LOCK(next);
 
-		VOP_UNLOCK(current);
+			VOP_UNLOCK(current);
+		}
 
-		// follow mountpoints, symlinks ...
+		// follow mountpoints
 		struct vnode *resolved;
 		resolved = resolve(next);
 		if (next != resolved) {
 			vnode_ref(resolved);
-			VOP_LOCK(resolved);
-
 			VOP_UNLOCK(next);
 			vnode_deref(next);
+
+			next = resolved;
+			VOP_LOCK(next);
 		}
 
-		next = resolved;
-
+		// resolve symlinks
 		if (next->type == VLNK) {
 			if (is_last && (flags & VFS_LOOKUP_NOFOLLOW)) {
 				// intermediary symlinks may be followed
@@ -471,12 +489,11 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			pr_debug("lookup link: %s\n", comp);
 
 			char *dest;
-			status_t rl_rv = VOP_READLINK(next, &dest);
+			status_t symresolve_retval = VOP_READLINK(next, &dest);
 			VOP_UNLOCK(next);
-			IF_ERR(rl_rv)
-			{
+			if (IS_ERR(symresolve_retval)) {
 				vnode_deref(next);
-				return rl_rv;
+				return symresolve_retval;
 			}
 
 			struct vnode *destvn, *resolve_cwd;
@@ -489,16 +506,15 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 
 			vnode_ref(resolve_cwd);
 
-			rl_rv = vfs_lookup_path(dest, resolve_cwd, 0, &destvn,
-						NULL);
+			symresolve_retval = vfs_lookup_path(dest, resolve_cwd,
+							    0, &destvn, NULL);
 
 			kfree(dest, 0);
 
 			vnode_deref(next);
 
-			IF_ERR(rl_rv)
-			{
-				return rl_rv;
+			if (IS_ERR(symresolve_retval)) {
+				return symresolve_retval;
 			}
 
 			next = destvn;
@@ -606,5 +622,5 @@ void vfs_dump_rec(struct vnode *vn, const char *prefix)
 void vfs_dump(const char *path)
 {
 	printk(0, "%s\n", path);
-	vfs_dump_rec(VFS_GETROOT(root_node->mountedvfs), "");
+	vfs_dump_rec(VFS_GETROOT(root_node->mounted_vfs), "");
 }
