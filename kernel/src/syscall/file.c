@@ -99,7 +99,7 @@ int dirfd_get(struct kprocess *proc, int dirfd, char *path, int flags,
 		return EBADF;
 	}
 
-	if (f->vnode->type) {
+	if (f->vnode->type != VDIR) {
 		return ENOTDIR;
 	}
 
@@ -114,13 +114,18 @@ int dirfd_get(struct kprocess *proc, int dirfd, char *path, int flags,
 DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 	       struct stat *buf, int flags)
 {
+	pr_debug("fstatat(%d, %s, %p, %d)\n", dirfd, user_path, buf, flags);
+
 	struct kprocess *proc = curproc();
 	size_t path_len = 0;
 	char *path = NULL;
 	if (user_path != NULL) {
 		path_len = strlen(user_path);
-		path = kmalloc(path_len + 1);
-		memcpy(path, user_path, path_len + 1);
+		// we never need to check for "" now
+		if (path_len != 0) {
+			path = kmalloc(path_len + 1);
+			memcpy(path, user_path, path_len + 1);
+		}
 	}
 
 	struct vnode *from_node = NULL;
@@ -131,28 +136,41 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 
 	guard_ref_adopt(from_node, vnode);
 
-	pr_debug("fstatat: %s, from_node: %p (is AT_FDCWD: %d)\n", path, from_node, dirfd == AT_FDCWD);
-	struct vnode *vn;
-	RET_ERRNO_ON_ERR(vfs_lookup_path(
-		path, from_node,
-		(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0, &vn,
-		NULL));
-
+	size_t filesize = 0;
 	struct vattr attr;
-	VOP_GETATTR(vn, &attr);
+	mode_t file_mode;
 
-	vnode_deref(vn);
-	kmutex_release(&vn->lock);
+	if (path == NULL) {
+		pr_debug("fstatat: lookup not needed\n");
+		VOP_GETATTR(from_node, &attr);
+		filesize = from_node->filesize;
+		file_mode = vtype_to_mode(from_node->type);
+	} else {
+		pr_debug("fstatat: %s, from_node: %p (is AT_FDCWD: %d)\n", path,
+			 from_node, dirfd == AT_FDCWD);
+		struct vnode *vn;
+		RET_ERRNO_ON_ERR(vfs_lookup_path(
+			path, from_node,
+			(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0,
+			&vn, NULL));
+
+		VOP_GETATTR(vn, &attr);
+		filesize = vn->filesize;
+		file_mode = vtype_to_mode(vn->type);
+
+		vnode_deref(vn);
+		kmutex_release(&vn->lock);
+	}
 
 	struct stat stat;
 	stat.st_dev = 0;
 	stat.st_ino = attr.inode;
-	stat.st_mode = attr.mode;
+	stat.st_mode = file_mode | attr.mode;
 	stat.st_nlink = attr.nlinks;
 	stat.st_uid = attr.uid;
 	stat.st_gid = attr.gid;
 	stat.st_rdev = 0;
-	stat.st_size = vn->filesize;
+	stat.st_size = filesize;
 	stat.st_atim = attr.atime;
 	stat.st_mtim = attr.mtime;
 	stat.st_ctim = attr.ctime;
@@ -169,6 +187,7 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 	       mode_t mode)
 {
+	pr_debug("sys_openat(%d, %s, %d, %d)\n", dirfd, user_path, flags, mode);
 	struct kprocess *proc = curproc();
 
 	int file_flags = convert_accmode(flags);
