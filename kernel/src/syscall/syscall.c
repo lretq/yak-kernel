@@ -35,7 +35,8 @@
 	X(SYS_CHDIR, sys_chdir)             \
 	X(SYS_FCHDIR, sys_fchdir)           \
 	X(SYS_GETDENTS, sys_getdents)       \
-	X(SYS_ARCHCTL, sys_archctl)
+	X(SYS_ARCHCTL, sys_archctl)         \
+	X(SYS_FACCESSAT, sys_faccessat)
 
 #define X(num, fn) extern long fn();
 SYSCALL_LIST

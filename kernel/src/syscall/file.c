@@ -111,6 +111,52 @@ int dirfd_get(struct kprocess *proc, int dirfd, char *path, int flags,
 	return 0;
 }
 
+// TODO: implement real permission checks!
+DEFINE_SYSCALL(SYS_FACCESSAT, faccessat, int dirfd, const char *user_path,
+	       int mode, int flags)
+{
+	pr_debug("faccessat(%d, %s, %d, %d)\n", dirfd, user_path, mode, flags);
+
+	struct kprocess *proc = curproc();
+
+	size_t path_len = 0;
+	char *path = NULL;
+	if (user_path != NULL) {
+		path_len = strlen(user_path);
+		// we never need to check for "" now
+		if (path_len != 0) {
+			path = kmalloc(path_len + 1);
+			memcpy(path, user_path, path_len + 1);
+		}
+	}
+
+	struct vnode *from_node = NULL;
+	int dirfd_res = dirfd_get(proc, dirfd, path, flags, &from_node);
+	if (dirfd_res != 0) {
+		return SYS_ERR(dirfd_res);
+	}
+
+	guard_ref_adopt(from_node, vnode);
+
+	if (path == NULL) {
+		if (from_node != NULL)
+			return SYS_OK(0);
+	} else {
+		struct vnode *vn;
+		RET_ERRNO_ON_ERR(vfs_lookup_path(
+			path, from_node,
+			(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0,
+			&vn, NULL));
+
+		vnode_deref(vn);
+		kmutex_release(&vn->lock);
+
+		return SYS_OK(0);
+	}
+
+	return SYS_ERR(EACCES);
+}
+
 DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 	       struct stat *buf, int flags)
 {
