@@ -17,4 +17,5 @@ yak_add_sources(
 	src/sched.S
 	src/start.S
 	src/string.S
+	src/syscall.S
 )

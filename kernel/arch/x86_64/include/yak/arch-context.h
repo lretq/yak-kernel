@@ -4,6 +4,8 @@
 
 #define CTX_SYS_IP(ctx) (ctx->rcx)
 #define CTX_SYS_SP(ctx) (ctx->rsp)
+#define CTX_SYS_RETVAL(ctx) (ctx->rax)
+#define CTX_SYS_ERR(ctx) (ctx->rdx)
 
 struct syscall_frame {
 	uint64_t rax;

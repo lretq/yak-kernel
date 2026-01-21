@@ -166,37 +166,6 @@ void _syscall_entry()
 		:);
 }
 
-[[gnu::naked]]
-void _syscall_fork_return()
-{
-	asm volatile(
-		//
-		"add $8, %%rsp\n\t"
-		"pop %%rax\n\t"
-		"pop %%rbx\n\t"
-		"pop %%rcx\n\t"
-		"pop %%rdx\n\t"
-		"pop %%rdi\n\t"
-		"pop %%rsi\n\t"
-		"pop %%r8\n\t"
-		"pop %%r9\n\t"
-		"pop %%r10\n\t"
-		"pop %%r11\n\t"
-		"pop %%r12\n\t"
-		"pop %%r13\n\t"
-		"pop %%r14\n\t"
-		"pop %%r15\n\t"
-		"pop %%rbp\n\t"
-
-		// cli now, we're switching to user rsp & gsbase again
-		"cli\n\t"
-		"pop %%rsp\n\t"
-		"swapgs\n\t"
-
-		"sysretq\n\t" ::
-			:);
-}
-
 static void setup_syscall_msrs()
 {
 	uint64_t efer = rdmsr(MSR_EFER);
