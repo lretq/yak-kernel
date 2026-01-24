@@ -21,7 +21,7 @@ struct kobject_header {
 void kobject_init(struct kobject_header *hdr, int signalstate);
 
 // returns amount of threads woken
-int kobject_signal_locked(struct kobject_header *hdr, int unblock_all);
+int kobject_signal_locked(struct kobject_header *hdr, bool unblock_all);
 
 #ifdef __cplusplus
 }

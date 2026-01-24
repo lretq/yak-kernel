@@ -12,7 +12,7 @@ void kobject_init(struct kobject_header *hdr, int signalstate)
 	TAILQ_INIT(&hdr->wait_list);
 }
 
-int kobject_signal_locked(struct kobject_header *hdr, int unblock_all)
+int kobject_signal_locked(struct kobject_header *hdr, bool unblock_all)
 {
 	assert(spinlock_held(&hdr->obj_lock));
 	struct wait_block *wb;

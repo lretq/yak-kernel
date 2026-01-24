@@ -15,9 +15,8 @@ void event_alarm(struct kevent *event)
 	}
 
 	if (event->hdr.waitcount) {
-		if (kobject_signal_locked(&event->hdr, 1)) {
-			goto exit;
-		}
+		// wake up all waiters
+		kobject_signal_locked(&event->hdr, true);
 	}
 
 	event->hdr.signalstate = 1;
