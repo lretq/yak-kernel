@@ -39,7 +39,7 @@ void softint_dispatch(ipl_t ipl)
 
 	struct cpu *cpu = curcpu_ptr();
 
-	while (cpu->softint_pending & (0xFF << ipl)) {
+	while (cpu->softint_pending & (0xFFFF << ipl)) {
 		softint_handlers[31 - __builtin_clz(cpu->softint_pending)](cpu);
 		cpu = curcpu_ptr();
 	}
