@@ -439,6 +439,7 @@ void sched_exit_self()
 	spinlock_lock_noipl(&reaper_lock);
 	TAILQ_INSERT_HEAD(&reaper_queue, thread, queue_entry);
 	spinlock_unlock_noipl(&reaper_lock);
+	event_alarm(&reaper_ev);
 
 	thread->status = THREAD_TERMINATING;
 

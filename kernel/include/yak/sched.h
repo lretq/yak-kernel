@@ -137,7 +137,7 @@ void kernel_enter_userspace(uint64_t ip, uint64_t sp);
 
 struct runqueue {
 	uint32_t ready_mask;
-	thread_queue_t queues[SCHED_PRIO_MAX];
+	thread_queue_t queues[SCHED_PRIO_MAX + 1];
 };
 
 struct sched {

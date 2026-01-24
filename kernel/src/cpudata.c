@@ -62,7 +62,8 @@ void cpudata_init(struct cpu *cpu, void *stack_top)
 	struct sched *sched = &curcpu_ptr()->sched;
 
 	for (size_t rq = 0; rq < 2; rq++) {
-		for (size_t prio = 0; prio < SCHED_PRIO_MAX; prio++) {
+		for (size_t prio = 0; prio < elementsof(sched->rqs[0].queues);
+		     prio++) {
 			TAILQ_INIT(&sched->rqs[rq].queues[prio]);
 		}
 		sched->rqs[rq].ready_mask = 0;
