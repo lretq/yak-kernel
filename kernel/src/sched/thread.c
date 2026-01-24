@@ -9,14 +9,19 @@ void kthread_destroy(struct kthread *thread)
 	struct kprocess *process = thread->owner_process;
 
 	ipl_t ipl = spinlock_lock(&process->thread_list_lock);
-	if (0 ==
-	    __atomic_sub_fetch(&process->thread_count, 1, __ATOMIC_ACQUIRE)) {
-		pr_warn("no thread left for process (implement destroying processes)\n");
-		if (process->pid == 1)
-			panic("attempted to kill init!\n");
-	}
 
 	LIST_REMOVE(thread, process_entry);
+
+	if (0 ==
+	    __atomic_sub_fetch(&process->thread_count, 1, __ATOMIC_ACQ_REL)) {
+		pr_debug("no thread left for process pid=%lld\n", process->pid);
+		if (process->pid == 1)
+			panic("attempted to kill init!\n");
+
+		assert(process->state == PROC_ALIVE);
+		process->state = PROC_ZOMBIE;
+		semaphore_signal(&process->parent_process->wait_semaphore);
+	}
 
 	spinlock_unlock(&process->thread_list_lock, ipl);
 

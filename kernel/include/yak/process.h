@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <yak/semaphore.h>
 #include <yak/queue.h>
 #include <yak/types.h>
 #include <yak/spinlock.h>
@@ -47,12 +48,33 @@ struct pgrp {
 
 DECLARE_REFMAINT(pgrp);
 
+enum kprocess_state {
+	PROC_ALIVE,
+	PROC_STOPPED,
+	PROC_ZOMBIE,
+};
+
+#define EXIT_STATUS(code) (((code) & 0xff) << 8)
+#define EXIT_SIGNAL(sig) ((sig) & 0x7f)
+#define EXIT_COREDUMP 0x80
+
 struct kprocess {
+	enum kprocess_state state;
+	// protected by the thread list lock
+	bool is_exiting;
+	int exit_status;
+	// multiple children may exit at once, so dont use a kevent
+	struct semaphore wait_semaphore;
+
 	pid_t pid;
 
 	pid_t ppid;
 	// cached pointer
 	struct kprocess *parent_process;
+
+	struct kmutex child_list_lock;
+	proc_list_t child_list;
+	LIST_ENTRY(kprocess) child_list_entry;
 
 	int uid, euid;
 	int gid, egid;
@@ -101,3 +123,5 @@ struct vnode *process_getcwd(struct kprocess *process);
 
 // transfers reference ownership to process
 void process_setcwd(struct kprocess *process, struct vnode *vn);
+
+void process_set_exit_status(struct kprocess *proc, int status);

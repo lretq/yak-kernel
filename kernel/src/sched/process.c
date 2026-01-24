@@ -1,3 +1,5 @@
+#include <yak/queue.h>
+#include <yak/semaphore.h>
 #include <yak/heap.h>
 #include <yak/init.h>
 #include <yak/status.h>
@@ -93,8 +95,15 @@ void kprocess_init(struct kprocess *process)
 {
 	memset(process, 0, sizeof(struct kprocess));
 
+	process->state = PROC_ALIVE;
+	process->exit_status = 0;
+	semaphore_init(&process->wait_semaphore, 0);
+
 	process->pid = __atomic_fetch_add(&next_pid, 1, __ATOMIC_SEQ_CST);
 	process->parent_process = NULL;
+
+	kmutex_init(&process->child_list_lock, "proc_child_list");
+	LIST_INIT(&process->child_list);
 
 	spinlock_init(&process->thread_list_lock);
 	LIST_INIT(&process->thread_list);
@@ -128,6 +137,9 @@ void uprocess_init(struct kprocess *process, struct kprocess *parent)
 	process_setcwd(process, vfs_getroot());
 
 	id_map_push(&pid_table, process->pid, process);
+
+	guard(mutex)(&parent->child_list_lock);
+	LIST_INSERT_HEAD(&parent->child_list, process, child_list_entry);
 }
 
 void proc_init()
@@ -155,6 +167,14 @@ void process_setcwd(struct kprocess *proc, struct vnode *vn)
 	spinlock_unlock(&proc->fs_lock, ipl);
 	if (old_cwd)
 		vnode_deref(old_cwd);
+}
+
+void process_set_exit_status(struct kprocess *proc, int status)
+{
+	// don't overwrite the exit status (e.g. we exit and handle a SIGKILL concurrently)
+	if (!__atomic_test_and_set(&proc->is_exiting, __ATOMIC_ACQ_REL)) {
+		__atomic_store_n(&proc->exit_status, status, __ATOMIC_RELEASE);
+	}
 }
 
 INIT_DEPS(proc);
