@@ -13,7 +13,9 @@
 
 DEFINE_SYSCALL(SYS_EXIT, exit, int rc)
 {
-	pr_debug("sys_exit() is a stub: exit with code %d\n", rc);
+	struct kprocess *proc = curproc();
+	process_set_exit_status(proc, EXIT_STATUS(rc));
+	pr_warn("sys_exit: we have to kill our sibling threads\n");
 	sched_exit_self();
 }
 
