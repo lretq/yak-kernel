@@ -136,8 +136,8 @@ void kthread_context_copy(const struct kthread *source_thread,
 void kernel_enter_userspace(uint64_t ip, uint64_t sp);
 
 struct runqueue {
-	uint32_t mask;
-	thread_queue_t queue[SCHED_PRIO_MAX];
+	uint32_t ready_mask;
+	thread_queue_t queues[SCHED_PRIO_MAX];
 };
 
 struct sched {

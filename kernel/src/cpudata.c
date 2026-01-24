@@ -63,9 +63,9 @@ void cpudata_init(struct cpu *cpu, void *stack_top)
 
 	for (size_t rq = 0; rq < 2; rq++) {
 		for (size_t prio = 0; prio < SCHED_PRIO_MAX; prio++) {
-			TAILQ_INIT(&sched->rqs[rq].queue[prio]);
+			TAILQ_INIT(&sched->rqs[rq].queues[prio]);
 		}
-		sched->rqs[rq].mask = 0;
+		sched->rqs[rq].ready_mask = 0;
 	}
 
 	sched->current_rq = &sched->rqs[0];
