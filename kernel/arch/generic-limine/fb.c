@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <limine.h>
+#include <string.h>
 #include <nanoprintf.h>
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
@@ -32,6 +33,7 @@ struct flanterm_context *kinfo_flanterm_context = NULL;
 #define KINFO_MARGIN 5
 #define KINFO_HEIGHT(fontscale) (16 * 3 * fontscale + KINFO_MARGIN * 2)
 
+struct limine_framebuffer limine_fb0_copy;
 size_t kinfo_height_start;
 
 static struct console *user_console = NULL;
@@ -56,10 +58,16 @@ void limine_fb_setup()
 
 	struct limine_framebuffer_response *res = fb_request.response;
 
-	if (res->framebuffer_count < 0)
+	// No framebuffers to setup
+	if (0 == res->framebuffer_count)
 		return;
 
 	fb_consoles = kcalloc(res->framebuffer_count, sizeof(struct console));
+
+	// for fireworks test
+	// after reclaiming memory, this would be gone!
+	memcpy(&limine_fb0_copy, res->framebuffers[0],
+	       sizeof(struct limine_framebuffer));
 
 	for (size_t i = 0; i < res->framebuffer_count; i++) {
 		struct limine_framebuffer *fb = res->framebuffers[i];
