@@ -39,18 +39,6 @@ struct wait_block {
 	TAILQ_ENTRY(wait_block) entry;
 };
 
-enum {
-	/* unblock when any object is ready */
-	WAIT_TYPE_ANY = 1,
-	/* unblock when all objects are ready */
-	WAIT_TYPE_ALL = 2,
-};
-
-enum {
-	WAIT_MODE_BLOCK = 1,
-	WAIT_MODE_POLL,
-};
-
 #define KTHREAD_INLINE_WAIT_BLOCKS 4
 
 // current/soon-to-be state
