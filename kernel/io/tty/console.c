@@ -15,9 +15,14 @@ static ssize_t console_write(struct tty *tty, const char *buf, size_t len)
 	return len;
 }
 
+static void set_termios(struct tty *tty, const struct termios *newt)
+{
+	// NOP
+}
+
 static struct tty_driver_ops console_ops = {
 	.write = console_write,
-	.set_termios = NULL,
+	.set_termios = set_termios,
 	.flush = NULL,
 };
 

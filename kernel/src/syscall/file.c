@@ -546,6 +546,8 @@ DEFINE_SYSCALL(SYS_FCNTL, fcntl, int fd, int op, size_t arg)
 
 DEFINE_SYSCALL(SYS_IOCTL, ioctl, int fd, unsigned long op, void *argp)
 {
+	pr_debug("sys_ioctl(%d, %lu, %p)\n", fd, op, argp);
+
 	struct kprocess *proc = curproc();
 	struct file *file;
 
