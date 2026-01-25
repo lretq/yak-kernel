@@ -417,7 +417,7 @@ void thread_reaper_fn()
 
 void sched_dynamic_init()
 {
-	kernel_thread_create("reaper_thread", SCHED_PRIO_REAL_TIME_END,
+	kernel_thread_create("reaper_thread", SCHED_PRIO_REAL_TIME,
 			     thread_reaper_fn, NULL, 1, &reaper_thread);
 }
 
