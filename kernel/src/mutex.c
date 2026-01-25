@@ -24,6 +24,8 @@ static status_t kmutex_acquire_common(struct kmutex *mutex, nstime_t timeout,
 	assert(mutex);
 	assert(mutex->owner != curthread());
 
+	status_t status;
+
 	while (1) {
 		for (int i = 0; i < LOCK_TRY_COUNT; i++) {
 			struct kthread *unlocked = NULL;
@@ -36,11 +38,10 @@ static status_t kmutex_acquire_common(struct kmutex *mutex, nstime_t timeout,
 			busyloop_hint();
 		}
 
-		status_t status = sched_wait_single(mutex, waitmode,
-						    WAIT_TYPE_ANY, timeout);
+		status = sched_wait_single(mutex, waitmode, WAIT_TYPE_ANY,
+					   timeout);
 
-		IF_ERR(status)
-		{
+		if (IS_ERR(status)) {
 			return status;
 		}
 	}
