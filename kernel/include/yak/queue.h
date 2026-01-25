@@ -37,6 +37,7 @@
 #define _SYS_QUEUE_H_
 
 #include <stddef.h>
+#include <assert.h>
 
 /*
  * This file defines five types of data structures: singly-linked lists,
@@ -496,6 +497,11 @@
 			(head)->tqh_last = &(elm)->field.tqe_next;       \
 		(head)->tqh_first = (elm);                               \
 		(elm)->field.tqe_prev = &(head)->tqh_first;              \
+	} while (0)
+
+#define TAILQ_VERIFY(head)                        \
+	do {                                      \
+		assert((head)->tqh_last != NULL); \
 	} while (0)
 
 #define TAILQ_INSERT_TAIL(head, elm, field)                \
