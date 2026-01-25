@@ -65,7 +65,8 @@ static inline paddr_t pmm_alloc_zeroed()
 
 static inline void pmm_free(paddr_t pa)
 {
-	pmm_free_order(pa, 0);
+	struct page *page = pmm_lookup_page(pa);
+	page_deref(page);
 }
 
 #ifdef __cplusplus

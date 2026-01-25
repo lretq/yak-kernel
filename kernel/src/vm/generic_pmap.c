@@ -143,6 +143,9 @@ void pmap_protect_range(struct pmap *pmap, vaddr_t va, size_t length,
 	}
 }
 
+// XXX: Potential for optimization:
+// Once we do TLB shootdowns we should BULK the unmap process, and let all the unmaps go through this function.
+// This means only sending ONE IPI per mapped address as opposed to length / level size after every unmap
 void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
 		      size_t level)
 {
@@ -153,6 +156,19 @@ void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
 #endif
 	for (uintptr_t i = 0; i < length; i += pgsz) {
 		pmap_unmap(pmap, va + i, level);
+	}
+}
+
+// XXX: Potential for optimization; like pmap_unmap_range
+void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t va, size_t length,
+			       size_t level)
+{
+	assert(level == 0);
+	size_t pgsz = PAGE_SIZE;
+
+	for (uintptr_t i = 0; i < length; i += pgsz) {
+		paddr_t pa = pmap_unmap(pmap, va + i, level);
+		pmm_free(pa);
 	}
 }
 
