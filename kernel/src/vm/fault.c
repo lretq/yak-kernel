@@ -22,6 +22,8 @@ size_t n_pagefaults;
 status_t vm_handle_fault(struct vm_map *map, vaddr_t address,
 			 unsigned long fault_flags)
 {
+	assert(map);
+
 	if ((fault_flags & VM_FAULT_PREFILL) == 0)
 		__atomic_fetch_add(&n_pagefaults, 1, __ATOMIC_RELAXED);
 

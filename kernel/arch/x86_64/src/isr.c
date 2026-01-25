@@ -153,8 +153,9 @@ void __isr_c_entry(struct context *frame)
 				flags |= VM_FAULT_READ;
 			}
 
-			status_t status = vm_handle_fault(curcpu().current_map,
-							  address, flags);
+			struct vm_map *map = curcpu().current_map;
+			assert(map);
+			status_t status = vm_handle_fault(map, address, flags);
 
 			IF_OK(status) return;
 

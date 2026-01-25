@@ -22,6 +22,8 @@ void rwlock_init(struct rwlock *rwlock, [[maybe_unused]] const char *name)
 
 status_t rwlock_acquire_shared(struct rwlock *rwlock, nstime_t timeout)
 {
+	assert(rwlock);
+
 	status_t status;
 
 	do {
