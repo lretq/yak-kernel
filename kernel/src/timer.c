@@ -18,7 +18,7 @@ HEAP_IMPL(timer_heap, timer, entry, timer_cmp);
 
 void timer_init(struct timer *timer)
 {
-	kobject_init(&timer->hdr, 0);
+	kobject_init(&timer->hdr, 0, OBJ_NOTIF);
 	timer->cpu = NULL;
 	timer->state = TIMER_STATE_UNUSED;
 	timer->deadline = 0;
@@ -28,7 +28,7 @@ void timer_reset(struct timer *timer)
 {
 	assert(timer->state != TIMER_STATE_QUEUED);
 	ipl_t ipl = spinlock_lock(&timer->hdr.obj_lock);
-	timer->hdr.signalstate = 0;
+	timer->hdr.obj_signal_count = 0;
 	spinlock_unlock(&timer->hdr.obj_lock, ipl);
 }
 
@@ -83,7 +83,7 @@ status_t timer_install(struct timer *timer, nstime_t ns_delta)
 	struct timer_heap *heap = &curcpu_ptr()->timer_heap;
 	HEAP_INSERT(timer_heap, heap, timer);
 
-	timer->hdr.signalstate = 0;
+	timer->hdr.obj_signal_count = 0;
 
 	spinlock_unlock_noipl(&timer->hdr.obj_lock);
 	spinlock_unlock_interrupts(&curcpu_ptr()->timer_lock, state);
@@ -124,11 +124,12 @@ void timer_update([[maybe_unused]] struct dpc *dpc, [[maybe_unused]] void *ctx)
 
 		root->state = TIMER_STATE_FIRED;
 
-		if (root->hdr.waitcount) {
-			kobject_signal_locked(&root->hdr, 1);
+		if (root->hdr.obj_wait_count > 0) {
+			// Signal all waiters
+			kobject_signal_locked(&root->hdr, true);
 		}
 
-		root->hdr.signalstate = 1;
+		root->hdr.obj_signal_count = 1;
 
 		spinlock_unlock_noipl(&root->hdr.obj_lock);
 		spinlock_unlock_noipl(&curcpu_ptr()->timer_lock);
@@ -140,8 +141,7 @@ void ksleep(nstime_t ns)
 	struct timer timer;
 	timer_init(&timer);
 	timer_install(&timer, ns);
-	sched_wait_single(&timer, WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
-			  TIMEOUT_INFINITE);
+	sched_wait(&timer, WAIT_MODE_BLOCK, TIMEOUT_INFINITE);
 }
 
 void kstall(nstime_t ns)

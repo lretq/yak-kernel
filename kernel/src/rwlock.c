@@ -11,7 +11,7 @@
 
 void rwlock_init(struct rwlock *rwlock, [[maybe_unused]] const char *name)
 {
-	event_init(&rwlock->event, 0);
+	event_init(&rwlock->event, 0, 0);
 #ifdef CONFIG_DEBUG
 	rwlock->name = name;
 #endif
@@ -46,11 +46,9 @@ status_t rwlock_acquire_shared(struct rwlock *rwlock, nstime_t timeout)
 		}
 
 wait:
-		status = sched_wait_single(&rwlock->event, WAIT_MODE_BLOCK,
-					   WAIT_TYPE_ALL, timeout);
+		status = sched_wait(&rwlock->event, WAIT_MODE_BLOCK, timeout);
 
-		IF_ERR(status)
-		{
+		if (IS_ERR(status)) {
 			return status;
 		}
 
@@ -101,8 +99,7 @@ status_t rwlock_acquire_exclusive(struct rwlock *rwlock, nstime_t timeout)
 		// someone was faster than us, wait for release
 
 wait:
-		status = sched_wait_single(&rwlock->event, WAIT_MODE_BLOCK,
-					   WAIT_TYPE_ALL, timeout);
+		status = sched_wait(&rwlock->event, WAIT_MODE_BLOCK, timeout);
 
 		IF_ERR(status)
 		{

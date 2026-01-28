@@ -74,7 +74,7 @@ DEFINE_SYSCALL(SYS_WAITPID, waitpid, pid_t pid, int *status, int flags)
 		if (flags & WNOHANG)
 			return SYS_OK(0);
 
-		EXPECT(sched_wait_single(&proc->wait_semaphore, WAIT_MODE_BLOCK,
-					 WAIT_TYPE_ANY, TIMEOUT_INFINITE));
+		EXPECT(sched_wait(&proc->wait_semaphore, WAIT_MODE_BLOCK,
+				  TIMEOUT_INFINITE));
 	}
 }

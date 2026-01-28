@@ -11,7 +11,7 @@
 
 void kmutex_init(struct kmutex *mutex, [[maybe_unused]] const char *name)
 {
-	event_init(&mutex->event, 0);
+	event_init(&mutex->event, 0, 0);
 #ifdef CONFIG_DEBUG
 	mutex->name = name;
 #endif
@@ -38,8 +38,7 @@ static status_t kmutex_acquire_common(struct kmutex *mutex, nstime_t timeout,
 			busyloop_hint();
 		}
 
-		status = sched_wait_single(mutex, waitmode, WAIT_TYPE_ANY,
-					   timeout);
+		status = sched_wait(mutex, waitmode, timeout);
 
 		if (IS_ERR(status)) {
 			return status;

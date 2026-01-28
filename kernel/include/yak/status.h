@@ -30,6 +30,8 @@ typedef enum status {
 	YAK_PERM_DENIED,
 	YAK_BADF,
 	YAK_NOTTY,
+	YAK_WAIT_SUCCESS =
+		0x8000, /* set when we waited for any of multiple objects successfully. The actual object index is ORd in. */
 } status_t;
 
 #define IS_OK(x) (likely((x) == YAK_SUCCESS))

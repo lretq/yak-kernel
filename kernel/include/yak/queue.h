@@ -499,10 +499,16 @@
 		(elm)->field.tqe_prev = &(head)->tqh_first;              \
 	} while (0)
 
+#ifdef CONFIG_DEBUG
 #define TAILQ_VERIFY(head)                        \
 	do {                                      \
 		assert((head)->tqh_last != NULL); \
 	} while (0)
+#else
+#define TAILQ_VERIFY(head) \
+	do {               \
+	} while (0)
+#endif
 
 #define TAILQ_INSERT_TAIL(head, elm, field)                \
 	do {                                               \

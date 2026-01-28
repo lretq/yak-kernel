@@ -43,6 +43,7 @@ struct spinlock {
 #ifdef x86_64
 #define busyloop_hint() asm volatile("pause" ::: "memory");
 #else
+#warning "unimplemented busyloop_hint"
 #define busyloop_hint()
 #endif
 

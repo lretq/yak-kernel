@@ -50,7 +50,7 @@ static struct kthread *reaper_thread = NULL;
 
 void sched_init()
 {
-	event_init(&reaper_ev, 0);
+	event_init(&reaper_ev, 0, 0);
 }
 
 __always_inline __no_prof __no_san static inline void
@@ -393,8 +393,7 @@ void sched_resume(struct kthread *thread)
 void thread_reaper_fn()
 {
 	for (;;) {
-		sched_wait_single(&reaper_ev, WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
-				  TIMEOUT_INFINITE);
+		sched_wait(&reaper_ev, WAIT_MODE_BLOCK, TIMEOUT_INFINITE);
 
 		ipl_t ipl = spinlock_lock(&reaper_lock);
 

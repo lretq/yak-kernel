@@ -11,7 +11,9 @@ struct kevent {
 	struct kobject_header hdr;
 };
 
-void event_init(struct kevent *event, int sigstate);
+#define KEVENT_NOTIF 0x1
+
+void event_init(struct kevent *event, int sigstate, int flags);
 void event_alarm(struct kevent *event);
 
 #ifdef __cplusplus

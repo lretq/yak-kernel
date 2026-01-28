@@ -81,9 +81,8 @@ static status_t read(struct tty *tty, char *buf, size_t len, size_t *read_bytes)
 
 			kmutex_release(&tty->read_mutex);
 
-			EXPECT(sched_wait_single(&tty->data_available,
-						 WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
-						 TIMEOUT_INFINITE));
+			EXPECT(sched_wait(&tty->data_available, WAIT_MODE_BLOCK,
+					  TIMEOUT_INFINITE));
 
 			kmutex_acquire(&tty->read_mutex, TIMEOUT_INFINITE);
 		}
@@ -99,9 +98,8 @@ static status_t read(struct tty *tty, char *buf, size_t len, size_t *read_bytes)
 				if (t->c_cc[VTIME] > 0) {
 					tm = t->c_cc[VTIME] * 100000000L;
 				}
-				sched_wait_single(&tty->data_available,
-						  WAIT_MODE_BLOCK,
-						  WAIT_TYPE_ANY, tm);
+				sched_wait(&tty->data_available,
+					   WAIT_MODE_BLOCK, tm);
 			}
 		}
 

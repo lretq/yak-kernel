@@ -28,6 +28,9 @@ enum {
 	SCHED_PRIO_MAX = 32,
 };
 
+#define WB_DEQUEUED 0x1
+#define WB_UNWAITED 0x2
+
 struct wait_block {
 	// thread waiting
 	struct kthread *thread;
@@ -35,6 +38,7 @@ struct wait_block {
 	void *object;
 	// status to set in the thread for WAIT_TYPE_ANY
 	status_t status;
+	unsigned short flags;
 	// for inserting into object wait list
 	TAILQ_ENTRY(wait_block) entry;
 };
@@ -59,6 +63,19 @@ enum {
 	THREAD_UNDEFINED,
 };
 
+// This solution comes from microsoft's channel9:
+// "Inside Windows 7: Arun Kishan - Farewell to the Windows Kernel Dispatcher Lock"
+enum {
+	WAIT_PHASE_NONE,
+	// Thread setting up wait logic
+	WAIT_PHASE_IN_PROGRESS,
+	// Thread comitted to waiting
+	WAIT_PHASE_COMITTED,
+	// Wait was aborted, for example by an object
+	// that was signaled in the middle of IN_PROGRESS
+	WAIT_PHASE_ABORTED,
+};
+
 #define KTHREAD_MAX_NAME_LEN 32
 
 struct kthread {
@@ -74,9 +91,13 @@ struct kthread {
 
 	int user_thread;
 
-	struct wait_block inline_wait_blocks[KTHREAD_INLINE_WAIT_BLOCKS];
 	struct wait_block *wait_blocks;
-	unsigned int wait_type;
+	size_t wait_blocks_count;
+
+	struct wait_block inline_wait_blocks[KTHREAD_INLINE_WAIT_BLOCKS];
+
+	unsigned short wait_phase;
+
 	status_t wait_status;
 
 	struct wait_block timeout_wait_block;
@@ -152,7 +173,7 @@ void sched_exit_self();
 
 void sched_yield(struct kthread *current, struct cpu *cpu);
 
-void sched_wake_thread(struct kthread *thread, status_t status);
+void thread_unwait(struct kthread *thread, status_t status);
 
 status_t launch_elf(struct kprocess *proc, char *path, int priority,
 		    char **argv, char **envp, struct kthread **thread_out);

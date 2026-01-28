@@ -208,7 +208,7 @@ struct tty *tty_create(const char *name, struct tty_driver_ops *driver_ops,
 
 	tty->termios = default_termios;
 
-	event_init(&tty->data_available, 0);
+	event_init(&tty->data_available, 0, 0);
 
 	tty->driver_ops = driver_ops;
 	if (ldisc_ops == NULL)
