@@ -12,6 +12,9 @@ struct ringbuffer {
 };
 
 status_t ringbuffer_init(struct ringbuffer *rb, size_t cap);
+status_t ringbuffer_static_init(struct ringbuffer *rb, size_t cap,
+				void *backing);
+
 void ringbuffer_destroy(struct ringbuffer *rb);
 
 /* neither put nor get is thread safe. users must bring their own sync. */

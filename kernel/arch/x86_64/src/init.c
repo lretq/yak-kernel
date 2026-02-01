@@ -217,22 +217,10 @@ void init_bsp_cpudata()
 void apic_global_init();
 void lapic_enable();
 
-static struct irq_object ipi_obj;
-size_t ipi_vector;
-
-int ipi_handler([[maybe_unused]] void *context)
-{
-	return IRQ_ACK;
-}
-
 void timer_setup()
 {
 	extern status_t hpet_setup();
 	EXPECT(hpet_setup());
-
-	irq_object_init(&ipi_obj, ipi_handler, NULL);
-	irq_alloc_ipl(&ipi_obj, IPL_HIGH, 0, PIN_CONFIG_ANY);
-	ipi_vector = VEC_TO_IRQ(ipi_obj.slot->vector);
 
 	apic_global_init();
 	lapic_enable();
@@ -240,6 +228,27 @@ void timer_setup()
 INIT_ENTAILS(x86_timer_setup, bsp_ready);
 INIT_DEPS(x86_timer_setup, early_io_stage);
 INIT_NODE(x86_timer_setup, timer_setup);
+
+static struct irq_object ipi_obj;
+size_t ipi_vector;
+
+void ipi_handler();
+
+static int arch_ipi_handler([[maybe_unused]] void *context)
+{
+	ipi_handler();
+	return IRQ_ACK;
+}
+
+void ipi_setup()
+{
+	irq_object_init(&ipi_obj, arch_ipi_handler, NULL);
+	irq_alloc_ipl(&ipi_obj, IPL_HIGH, 0, PIN_CONFIG_ANY);
+	ipi_vector = VEC_TO_IRQ(ipi_obj.slot->vector);
+}
+INIT_ENTAILS(x86_ipi_setup, bsp_ready);
+INIT_DEPS(x86_ipi_setup, x86_timer_setup);
+INIT_NODE(x86_ipi_setup, ipi_setup);
 
 #include <limine.h>
 
