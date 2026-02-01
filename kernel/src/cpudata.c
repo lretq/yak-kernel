@@ -10,51 +10,43 @@ size_t num_cpus_active = 0;
 
 void cpu_init()
 {
-	for (size_t i = 0; i < CPUMASK_BITS_SIZE; i++) {
-		__atomic_store_n(&cpumask_active.bits[i], 0, __ATOMIC_RELAXED);
-	}
+	bitset_init(&cpumask_active);
 }
 
 void cpu_up(size_t id)
 {
-	const size_t index = id / CPUMASK_BITS_PER_IDX;
-	const size_t bit = id & (CPUMASK_BITS_PER_IDX - 1);
-
-	__atomic_fetch_or(&cpumask_active.bits[index],
-			  ((cpumask_word_t)1 << bit), __ATOMIC_ACQUIRE);
-	__atomic_fetch_add(&num_cpus_active, 1, __ATOMIC_ACQUIRE);
+	bitset_atomic_set(&cpumask_active, id);
+	__atomic_fetch_add(&num_cpus_active, 1, __ATOMIC_RELAXED);
 }
 
 size_t cpus_online()
 {
-	return __atomic_load_n(&num_cpus_active, __ATOMIC_ACQUIRE);
+	return __atomic_load_n(&num_cpus_active, __ATOMIC_RELAXED);
 }
-
-static size_t cpu_id = 0;
 
 extern void timer_update(struct dpc *dpc, void *ctx);
 
-static struct cpu *bsp_ptr;
+static struct cpu *bsp_ptr = NULL;
 struct cpu **__all_cpus = NULL;
+
+static size_t next_cpu_id = 0;
 
 void cpudata_init(struct cpu *cpu, void *stack_top)
 {
 	cpu->self = cpu;
 
-	cpu->cpu_id = __atomic_fetch_add(&cpu_id, 1, __ATOMIC_RELAXED);
-	if (cpu->cpu_id >= MAX_NR_CPUS)
+	cpu->cpu_id = __atomic_fetch_add(&next_cpu_id, 1, __ATOMIC_RELAXED);
+
+	if (cpu->cpu_id >= MAX_NR_CPUS) {
 		panic("CPUs >= MAX_NR_CPUS\n");
+	}
+
 	if (cpu->cpu_id == 0) {
 		bsp_ptr = cpu;
 		__all_cpus = &bsp_ptr;
 	}
 
-	cpu->kstack_top = NULL;
-
 	cpu->current_map = NULL;
-
-	cpu->next_thread = NULL;
-	cpu->current_thread = NULL;
 
 	cpu->softint_pending = 0;
 
