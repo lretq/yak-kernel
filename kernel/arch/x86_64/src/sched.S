@@ -19,14 +19,16 @@ asm_swtch:
 	mov %r14, 5*8(%rdi)
 	mov %r15, 6*8(%rdi)
 
+	# switch off of our stack
+	mov 1*8(%rsi), %rsp
+
 	# we need rsi again, and align to 16
 	push %rsi
 	call sched_finalize_swtch
 	pop %rsi
 
-	# restore
+	# fully restore other registers
 	mov 0*8(%rsi), %rbx
-	mov 1*8(%rsi), %rsp
 	mov 2*8(%rsi), %rbp
 	mov 3*8(%rsi), %r12
 	mov 4*8(%rsi), %r13

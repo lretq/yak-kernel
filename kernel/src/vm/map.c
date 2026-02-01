@@ -623,8 +623,22 @@ struct vm_map_entry *vm_map_lookup_entry_locked(struct vm_map *map,
 
 void vm_map_activate(struct vm_map *map)
 {
-	pmap_activate(&map->pmap);
-	curcpu().current_map = map;
+	assert(map);
+
+	struct cpu *cpu = curcpu_ptr();
+
+	struct vm_map *old = cpu->current_map;
+
+	if (old != map) {
+		pmap_activate(&map->pmap);
+	}
+
+	cpu->current_map = map;
+
+	if (old != NULL) {
+		bitset_atomic_clear(&old->pmap.mapped_on, cpu->cpu_id);
+	}
+	bitset_atomic_set(&map->pmap.mapped_on, cpu->cpu_id);
 }
 
 void vm_map_tmp_switch(struct vm_map *map)

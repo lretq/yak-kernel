@@ -136,6 +136,8 @@ void kmem_free(vmem_t *vmp, void *addr, size_t size)
 	assert(addr);
 	assert(size > 0);
 
+	//pr_debug("kmem_free %lx-%lx\n", (vaddr_t)addr, (vaddr_t)addr + size);
+	memset(addr, 0xBB, size);
 	pmap_unmap_range_and_free(&kmap()->pmap, (vaddr_t)addr, size, 0);
 
 	vmem_free(vmp, addr, size);

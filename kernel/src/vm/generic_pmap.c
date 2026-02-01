@@ -7,6 +7,7 @@
 #include <yak/arch-mm.h>
 #include <yak/arch-cpu.h>
 #include <yak/macro.h>
+#include <yak/ipi.h>
 #include <yak/vm.h>
 #include <yak/vm/pmap.h>
 #include <yak/vm/pmm.h>
@@ -58,6 +59,57 @@ static pte_t *pte_fetch(struct pmap *pmap, uintptr_t va, size_t atLevel,
 	return NULL;
 }
 
+static inline void pmap_invalidate(vaddr_t va)
+{
+	asm volatile("invlpg (%0)" ::"r"(va) : "memory");
+}
+
+static void pmap_invalidate_range(vaddr_t va, size_t length, size_t pgsz)
+{
+	for (size_t i = 0; i < length; i += pgsz) {
+		pmap_invalidate(va + i);
+	}
+}
+
+struct shootdown_context {
+	vaddr_t va;
+	size_t length;
+#ifdef PMAP_HAS_LARGE_PAGE_SIZES
+	size_t level;
+#endif
+};
+
+static void shootdown_handler(void *ctx)
+{
+	struct shootdown_context *shootdown_ctx = ctx;
+	vaddr_t va = shootdown_ctx->va;
+	size_t len = shootdown_ctx->length;
+
+#ifdef PMAP_HAS_LARGE_PAGE_SIZES
+	size_t level = shootdown_ctx->level;
+	size_t pgsz = level == 0 ? PAGE_SIZE : PMAP_LARGE_PAGE_SIZES[level - 1];
+#else
+	size_t pgsz = PAGE_SIZE;
+#endif
+
+	pmap_invalidate_range(va, len, pgsz);
+}
+
+static void do_tlb_shootdown(struct pmap *pmap, vaddr_t va, size_t length,
+			     size_t level)
+{
+	struct shootdown_context ctx;
+	ctx.va = va;
+	ctx.length = length;
+	ctx.level = level;
+
+	struct cpumask *mask = &pmap->mapped_on;
+	if (pmap == &kmap()->pmap) {
+		mask = &cpumask_active;
+	}
+	ipi_mask_send(mask, shootdown_handler, &ctx, false, true);
+}
+
 void pmap_kernel_bootstrap(struct pmap *pmap)
 {
 	pmap->top_level = pmm_alloc_zeroed();
@@ -85,11 +137,7 @@ void pmap_init(struct pmap *pmap)
 	}
 }
 
-static inline void pmap_invalidate(vaddr_t va)
-{
-	asm volatile("invlpg (%0)" ::"r"(va) : "memory");
-}
-
+// It is much more efficient to first unmap_range something, and then to map!
 void pmap_map(struct pmap *pmap, uintptr_t va, uintptr_t pa, size_t level,
 	      vm_prot_t prot, vm_cache_t cache)
 {
@@ -104,10 +152,11 @@ void pmap_map(struct pmap *pmap, uintptr_t va, uintptr_t pa, size_t level,
 
 	if (!pte_is_zero(pte)) {
 		pmap_invalidate(va);
+		do_tlb_shootdown(pmap, va, PAGE_SIZE, 0);
 	}
 }
 
-paddr_t pmap_unmap(struct pmap *pmap, uintptr_t va, size_t level)
+static paddr_t do_unmap(struct pmap *pmap, vaddr_t va, size_t level)
 {
 	pte_t *ppte = pte_fetch(pmap, va, level, 0);
 	if (ppte) {
@@ -116,7 +165,15 @@ paddr_t pmap_unmap(struct pmap *pmap, uintptr_t va, size_t level)
 		pmap_invalidate(va);
 		return pte_paddr(pte);
 	}
-	return 0;
+	return UINTPTR_MAX;
+}
+
+paddr_t pmap_unmap(struct pmap *pmap, uintptr_t va, size_t level)
+{
+	paddr_t pa = do_unmap(pmap, va, level);
+	if (pa != UINTPTR_MAX)
+		do_tlb_shootdown(pmap, va, PAGE_SIZE, level);
+	return pa;
 }
 
 void pmap_protect_range(struct pmap *pmap, vaddr_t va, size_t length,
@@ -141,6 +198,8 @@ void pmap_protect_range(struct pmap *pmap, vaddr_t va, size_t length,
 			pmap_invalidate(va + i);
 		}
 	}
+
+	do_tlb_shootdown(pmap, va, length, level);
 }
 
 // XXX: Potential for optimization:
@@ -155,11 +214,12 @@ void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
 	size_t pgsz = PAGE_SIZE;
 #endif
 	for (uintptr_t i = 0; i < length; i += pgsz) {
-		pmap_unmap(pmap, va + i, level);
+		do_unmap(pmap, va + i, level);
 	}
+
+	do_tlb_shootdown(pmap, va, length, level);
 }
 
-// XXX: Potential for optimization; like pmap_unmap_range
 void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t va, size_t length,
 			       size_t level)
 {
@@ -167,7 +227,9 @@ void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t va, size_t length,
 	size_t pgsz = PAGE_SIZE;
 
 	for (uintptr_t i = 0; i < length; i += pgsz) {
-		paddr_t pa = pmap_unmap(pmap, va + i, level);
+		paddr_t pa = do_unmap(pmap, va + i, level);
+		// Problem: we have to ensure the page is not mapped anymore
+		do_tlb_shootdown(pmap, va + i, pgsz, level);
 		pmm_free(pa);
 	}
 }

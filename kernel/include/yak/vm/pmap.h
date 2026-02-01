@@ -7,9 +7,11 @@ extern "C" {
 #include <stdint.h>
 #include <yak/arch-mm.h>
 #include <yak/types.h>
+#include <yak/cpu.h>
 
 struct pmap {
-	uintptr_t top_level;
+	struct cpumask mapped_on;
+	paddr_t top_level;
 };
 
 void pmap_kernel_bootstrap(struct pmap *pmap);

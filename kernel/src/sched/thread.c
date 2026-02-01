@@ -2,8 +2,21 @@
 #include <yak/log.h>
 #include <yak/heap.h>
 
+static void ensure_reapable(struct kthread *thread)
+{
+	// ensures that the thread has switched off
+	ipl_t ipl = spinlock_lock(&thread->thread_lock);
+	spinlock_unlock(&thread->thread_lock, ipl);
+}
+
 void kthread_destroy(struct kthread *thread)
 {
+	ensure_reapable(thread);
+
+	if (thread->status != THREAD_TERMINATING) {
+		pr_debug("DESTROY LIVE THREAD %p (%d)\n", thread,
+			 thread->status);
+	}
 	assert(thread->status == THREAD_TERMINATING);
 
 	struct kprocess *process = thread->owner_process;
@@ -25,10 +38,12 @@ void kthread_destroy(struct kthread *thread)
 
 	spinlock_unlock(&process->thread_list_lock, ipl);
 
+#if 1
 	vaddr_t stack_base = (vaddr_t)thread->kstack_top - KSTACK_SIZE;
 	vm_kfree((void *)stack_base, KSTACK_SIZE);
 
 	kfree(thread, sizeof(struct kthread));
+#endif
 }
 
 status_t kernel_thread_create(const char *name, unsigned int priority,

@@ -73,13 +73,14 @@ void cpudata_init(struct cpu *cpu, void *stack_top)
 	HEAP_INIT(&cpu->timer_heap);
 	dpc_init(&cpu->timer_update_dpc, timer_update);
 
+	rcq_init(&cpu->rc_queue);
+
 	cpu->kstack_top = stack_top;
 	cpu->idle_thread.kstack_top = stack_top;
-
-	cpu->current_thread = &curcpu_ptr()->idle_thread;
+	cpu->current_thread = &cpu->idle_thread;
 	cpu->next_thread = NULL;
 
 	char idle_name[12];
 	npf_snprintf(idle_name, sizeof(idle_name), "idle%ld", cpu->cpu_id);
-	kthread_init(&curcpu_ptr()->idle_thread, idle_name, 0, &kproc0, 0);
+	kthread_init(&cpu->idle_thread, idle_name, 0, &kproc0, 0);
 }

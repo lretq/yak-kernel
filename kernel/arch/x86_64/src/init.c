@@ -276,12 +276,14 @@ static void c_ap_entry(struct limine_mp_info *info)
 
 	wrmsr(MSR_GSBASE, extra->percpu_offset);
 
-	vm_map_activate(kmap());
+	pmap_activate(&kmap()->pmap);
 
 	struct cpu *cpudata = (struct cpu *)((uintptr_t)&percpu_cpudata +
 					     extra->percpu_offset);
 
 	cpudata_init(cpudata, (void *)extra->stack_top);
+
+	vm_map_activate(kmap());
 
 	setup_cpu();
 	fpu_ap_init();
