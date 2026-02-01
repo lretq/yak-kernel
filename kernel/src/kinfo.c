@@ -6,6 +6,7 @@
 #include <yak/init.h>
 
 extern size_t n_pagefaults;
+extern size_t n_shootdowns;
 
 static void kinfo_update_thread()
 {
@@ -37,10 +38,11 @@ static void kinfo_update_thread()
 		pmm_get_stat(&pmm_stat);
 
 		bufwrite(
-			"%ld MiB free of %ld MiB usable (reserved: %ld MiB) total pagefaults: %ld\n",
+			"%ld MiB free of %ld MiB usable (reserved: %ld MiB) pagefaults: %ld tlb shootdowns: %ld\n",
 			pmm_stat.free_pages >> 8, pmm_stat.usable_pages >> 8,
 			(pmm_stat.total_pages - pmm_stat.usable_pages) >> 8,
-			__atomic_load_n(&n_pagefaults, __ATOMIC_RELAXED));
+			__atomic_load_n(&n_pagefaults, __ATOMIC_RELAXED),
+			__atomic_load_n(&n_shootdowns, __ATOMIC_RELAXED));
 		// replace with system avg load
 		bufwrite("%ld active threads, %ld online CPUs", -1UL,
 			 cpus_online());

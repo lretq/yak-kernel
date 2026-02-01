@@ -60,7 +60,7 @@ void kmain()
 	struct kthread *init_thrd;
 	EXPECT(launch_elf(proc1, "/sbin/init", SCHED_PRIO_TIME_SHARE, init_args,
 			  init_envp, &init_thrd));
-	//sched_resume(init_thrd);
+	sched_resume(init_thrd);
 
 #if 0
 	struct timer t1;
@@ -103,7 +103,7 @@ void kmain()
 	timer_uninstall(&t4);
 #endif
 
-#if 1
+#if 0
 	extern void PerformFireworksTest();
 	kernel_thread_create("fwtst", SCHED_PRIO_REAL_TIME,
 			     PerformFireworksTest, NULL, 1, NULL);

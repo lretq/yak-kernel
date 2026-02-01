@@ -16,7 +16,7 @@
 #include <yak/arch-mm.h>
 #include <yak/log.h>
 
-size_t n_pagefaults;
+size_t n_pagefaults = 0;
 
 // TODO: fault_flags are also used in map.c:VM_PREFILL!!!
 status_t vm_handle_fault(struct vm_map *map, vaddr_t address,

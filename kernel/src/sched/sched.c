@@ -53,8 +53,7 @@ void sched_init()
 	event_init(&reaper_ev, 0, 0);
 }
 
-__always_inline __no_prof __no_san static inline void
-wait_for_switch(struct kthread *thread)
+static inline void wait_for_switch(struct kthread *thread)
 {
 	while (__atomic_load_n(&thread->switching, __ATOMIC_ACQUIRE)) {
 		busyloop_hint();
@@ -69,6 +68,7 @@ extern void plat_swtch(struct kthread *current, struct kthread *new);
 void sched_finalize_swtch(struct kthread *current, struct kthread *next)
 {
 	__atomic_store_n(&current->switching, 0, __ATOMIC_RELEASE);
+
 	spinlock_unlock_noipl(&current->thread_lock);
 
 	next->status = THREAD_RUNNING;
@@ -81,7 +81,10 @@ static void swtch(struct kthread *current, struct kthread *thread)
 	assert(current && thread);
 	assert(current != thread);
 	assert(spinlock_held(&current->thread_lock));
-	assert(!spinlock_held(&thread->thread_lock));
+	// This can happen legally:
+	// if we come from sched_yield and we have waited for switching=0 sucessfully,
+	// the spinlock is unlocked only afterwards
+	//assert(!spinlock_held(&thread->thread_lock));
 	assert(current->status != THREAD_TERMINATING ||
 	       current->status != THREAD_WAITING);
 

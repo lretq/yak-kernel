@@ -1,3 +1,4 @@
+#include <yak/types.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -95,9 +96,13 @@ static void shootdown_handler(void *ctx)
 	pmap_invalidate_range(va, len, pgsz);
 }
 
+size_t n_shootdowns = 0;
+
 static void do_tlb_shootdown(struct pmap *pmap, vaddr_t va, size_t length,
 			     size_t level)
 {
+	__atomic_fetch_add(&n_shootdowns, 1, __ATOMIC_RELAXED);
+
 	struct shootdown_context ctx;
 	ctx.va = va;
 	ctx.length = length;
@@ -202,9 +207,6 @@ void pmap_protect_range(struct pmap *pmap, vaddr_t va, size_t length,
 	do_tlb_shootdown(pmap, va, length, level);
 }
 
-// XXX: Potential for optimization:
-// Once we do TLB shootdowns we should BULK the unmap process, and let all the unmaps go through this function.
-// This means only sending ONE IPI per mapped address as opposed to length / level size after every unmap
 void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
 		      size_t level)
 {
@@ -220,17 +222,41 @@ void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
 	do_tlb_shootdown(pmap, va, length, level);
 }
 
-void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t va, size_t length,
+// 32 * 4k = 128kib
+#define FREE_BATCH 32
+
+void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t base, size_t length,
 			       size_t level)
 {
 	assert(level == 0);
 	size_t pgsz = PAGE_SIZE;
 
-	for (uintptr_t i = 0; i < length; i += pgsz) {
-		paddr_t pa = do_unmap(pmap, va + i, level);
-		// Problem: we have to ensure the page is not mapped anymore
-		do_tlb_shootdown(pmap, va + i, pgsz, level);
-		pmm_free(pa);
+	paddr_t batch[FREE_BATCH];
+	size_t batch_count = 0;
+
+	for (voff_t offset = 0; offset < length; offset += pgsz) {
+		vaddr_t vaddr = base + offset;
+		paddr_t pa = do_unmap(pmap, vaddr, level);
+		batch[batch_count++] = pa;
+
+		if (batch_count == FREE_BATCH) {
+			do_tlb_shootdown(pmap, vaddr - (FREE_BATCH - 1) * pgsz,
+					 FREE_BATCH * pgsz, level);
+
+			for (size_t i = 0; i < batch_count; i++) {
+				pmm_free(batch[i]);
+			}
+
+			batch_count = 0;
+		}
+	}
+
+	if (batch_count > 0) {
+		vaddr_t vaddr = base + length - batch_count * pgsz;
+		do_tlb_shootdown(pmap, vaddr, batch_count * pgsz, level);
+		for (size_t i = 0; i < batch_count; i++) {
+			pmm_free(batch[i]);
+		}
 	}
 }
 
