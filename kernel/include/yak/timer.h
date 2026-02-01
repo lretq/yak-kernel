@@ -37,7 +37,7 @@ void plat_arm_timer(nstime_t deadline);
 struct timespec time_now();
 
 struct timer {
-	struct kobject_header hdr;
+	struct kobject hdr;
 
 	struct cpu *cpu;
 

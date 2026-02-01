@@ -24,12 +24,12 @@
 #include <yak/types.h>
 #include <yak/status.h>
 
-static inline bool is_obj_signaled(struct kobject_header *obj)
+static inline bool is_obj_signaled(struct kobject *obj)
 {
 	return likely(obj->obj_signal_count > 0);
 }
 
-static inline void obj_maybe_acquire(struct kobject_header *obj)
+static inline void obj_maybe_acquire(struct kobject *obj)
 {
 	if (obj->obj_type == OBJ_SYNC) {
 		obj->obj_signal_count -= 1;
@@ -38,7 +38,7 @@ static inline void obj_maybe_acquire(struct kobject_header *obj)
 
 static void wb_dequeue(struct wait_block *wb)
 {
-	struct kobject_header *obj = wb->object;
+	struct kobject *obj = wb->object;
 	spinlock_lock_noipl(&obj->obj_lock);
 	// signaling an object sets WB_DEQUEUED
 	if ((wb->flags & WB_DEQUEUED) == 0) {
@@ -90,23 +90,48 @@ static void set_timeout(struct kthread *thread, nstime_t timeout)
 	ttim->hdr.obj_wait_count = 1;
 }
 
-status_t sched_wait_many(void **objects_, size_t count, wait_mode_t wait_mode,
-			 wait_type_t wait_type, nstime_t timeout)
+static status_t poll_many(struct kobject **objs, size_t count, nstime_t timeout)
 {
-	assert(objects_);
-	assert(count >= 1);
-	// these are todo
-	assert(count <= KTHREAD_INLINE_WAIT_BLOCKS);
-	assert(wait_mode != WAIT_MODE_POLL);
+	status_t ret = YAK_TIMEOUT;
+	bool has_timeout = (timeout != POLL_ONCE) &&
+			   (timeout != TIMEOUT_INFINITE);
+	nstime_t deadline = 0;
 
-	struct kthread *thread = curthread();
-	struct kobject_header **objects = (struct kobject_header **)objects_;
+	ipl_t ipl = ripl(IPL_DPC);
 
-	struct wait_block *wb_array = thread->inline_wait_blocks;
-	thread->wait_blocks = wb_array;
+	// deadline after which we stop polling
+	if (has_timeout)
+		deadline = plat_getnanos() + timeout;
+
+	do {
+		if (has_timeout && plat_getnanos() >= deadline) {
+			// polling took too long!
+			break;
+		}
+
+		for (size_t i = 0; i < count; i++) {
+			struct kobject *obj = objs[i];
+
+			spinlock_lock_noipl(&obj->obj_lock);
+
+			if (is_obj_signaled(obj)) {
+				obj_maybe_acquire(obj);
+				spinlock_unlock_noipl(&obj->obj_lock);
+				ret = YAK_WAIT_SUCCESS + i;
+				break;
+			}
+
+			spinlock_unlock_noipl(&obj->obj_lock);
+		}
+
+		busyloop_hint();
+	} while (timeout != POLL_ONCE);
+
+	xipl(ipl);
+	return ret;
 }
 
-static status_t poll_single(struct kobject_header *obj, nstime_t timeout)
+static status_t poll_single(struct kobject *obj, nstime_t timeout)
 {
 	status_t ret = YAK_TIMEOUT;
 	bool has_timeout = (timeout != POLL_ONCE) &&
@@ -143,11 +168,111 @@ static status_t poll_single(struct kobject_header *obj, nstime_t timeout)
 	return ret;
 }
 
+status_t sched_wait_many(struct wait_block *table, void **objects_,
+			 size_t count, wait_mode_t wait_mode,
+			 wait_type_t wait_type, nstime_t timeout)
+{
+	assert(objects_);
+	assert(count >= 1);
+	assert(wait_type != WAIT_TYPE_ALL);
+
+	struct kthread *thread = curthread();
+	struct kobject **objects = (struct kobject **)objects_;
+
+	bool has_timeout = (timeout != TIMEOUT_INFINITE);
+
+	if (wait_mode == WAIT_MODE_POLL) {
+		if (wait_type == WAIT_TYPE_ALL)
+			return YAK_INVALID_ARGS;
+
+		return poll_many(objects, count, timeout);
+	}
+
+	if (table == NULL) {
+		assert(count <= KTHREAD_INLINE_WAIT_BLOCKS);
+		table = thread->inline_wait_blocks;
+	}
+
+	for (size_t i = 0; i < count; i++) {
+		struct wait_block *wb = &table[i];
+		wb->thread = thread;
+		wb->object = objects[i];
+		wb->status = YAK_WAIT_SUCCESS + i;
+		wb->flags = 0;
+	}
+
+RetryWait:
+	ipl_t ipl = ripl(IPL_DPC);
+
+	spinlock_lock_noipl(&thread->thread_lock);
+	thread->wait_phase = WAIT_PHASE_IN_PROGRESS;
+	thread->timeout_wait_block.flags = 0;
+	thread->wait_blocks = table;
+	thread->wait_blocks_count = count;
+	spinlock_unlock_noipl(&thread->thread_lock);
+
+	for (size_t i = 0; i < count; i++) {
+		struct kobject *obj = objects[i];
+		spinlock_lock_noipl(&obj->obj_lock);
+
+		if (is_obj_signaled(obj)) {
+			obj_maybe_acquire(obj);
+			spinlock_unlock_noipl(&obj->obj_lock);
+
+			thread->wait_phase = WAIT_PHASE_NONE;
+
+			xipl(ipl);
+			return YAK_WAIT_SUCCESS + i;
+		} else {
+			TAILQ_VERIFY(&obj->obj_wait_list);
+			TAILQ_INSERT_TAIL(&obj->obj_wait_list, &table[i],
+					  entry);
+			obj->obj_wait_count += 1;
+		}
+
+		spinlock_unlock_noipl(&obj->obj_lock);
+	}
+
+	if (has_timeout)
+		set_timeout(thread, timeout);
+
+	spinlock_lock_noipl(&thread->thread_lock);
+
+	if (thread->wait_phase == WAIT_PHASE_ABORTED) {
+		spinlock_unlock_noipl(&thread->thread_lock);
+
+		if (has_timeout) {
+			timer_uninstall(&thread->timeout_timer);
+			wb_dequeue(&thread->timeout_wait_block);
+		}
+
+		status_t wait_status = thread->wait_status;
+
+		for (size_t i = 0; i < count; i++) {
+			wb_dequeue(&table[i]);
+		}
+
+		thread->wait_phase = WAIT_PHASE_NONE;
+
+		xipl(ipl);
+
+		return wait_status;
+	}
+
+	status_t wait_status = do_wait(thread, has_timeout);
+	// thread is unlocked upon returning
+	xipl(ipl);
+
+	// XXX: APCs -> Retry
+
+	return wait_status;
+}
+
 status_t sched_wait(void *object, wait_mode_t wait_mode, nstime_t timeout)
 {
 	assert(object);
 	struct kthread *thread = curthread();
-	struct kobject_header *obj = object;
+	struct kobject *obj = object;
 
 	bool has_timeout = (timeout != TIMEOUT_INFINITE);
 
@@ -166,9 +291,12 @@ status_t sched_wait(void *object, wait_mode_t wait_mode, nstime_t timeout)
 RetryWait:
 	ipl_t ipl = ripl(IPL_DPC);
 
+	spinlock_lock_noipl(&thread->thread_lock);
+	thread->wait_phase = WAIT_PHASE_IN_PROGRESS;
 	thread->timeout_wait_block.flags = 0;
 	thread->wait_blocks = wb;
 	thread->wait_blocks_count = 1;
+	spinlock_unlock_noipl(&thread->thread_lock);
 
 	spinlock_lock_noipl(&obj->obj_lock);
 
@@ -228,6 +356,7 @@ RetryWait:
 void thread_unwait(struct kthread *thread, status_t status)
 {
 	assert(spinlock_held(&thread->thread_lock));
+	//pr_debug("unwait %p\n", thread);
 	assert(thread->status == THREAD_WAITING ||
 	       thread->wait_phase == WAIT_PHASE_IN_PROGRESS);
 

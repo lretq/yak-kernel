@@ -66,10 +66,12 @@ extern void plat_swtch(struct kthread *current, struct kthread *new);
 
 // called after switching off stack is complete
 [[gnu::no_instrument_function]]
-void sched_finalize_swtch(struct kthread *thread)
+void sched_finalize_swtch(struct kthread *current, struct kthread *next)
 {
-	spinlock_unlock_noipl(&thread->thread_lock);
-	__atomic_store_n(&thread->switching, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&current->switching, 0, __ATOMIC_RELEASE);
+	spinlock_unlock_noipl(&current->thread_lock);
+
+	next->status = THREAD_RUNNING;
 }
 
 [[gnu::no_instrument_function]]
@@ -80,21 +82,26 @@ static void swtch(struct kthread *current, struct kthread *thread)
 	assert(current != thread);
 	assert(spinlock_held(&current->thread_lock));
 	assert(!spinlock_held(&thread->thread_lock));
+	assert(current->status != THREAD_TERMINATING ||
+	       current->status != THREAD_WAITING);
 
 	current->affinity_cpu = curcpu_ptr();
+
+	if (thread->vm_ctx != NULL) {
+		assert(thread->owner_process == &kproc0);
+		vm_map_activate(thread->vm_ctx);
+	} else if (thread->user_thread) {
+		if (current->owner_process != thread->owner_process) {
+			vm_map_activate(thread->owner_process->map);
+		}
+	}
 
 	curcpu().current_thread = thread;
 	curcpu().kstack_top = thread->kstack_top;
 
-	if (unlikely(thread->vm_ctx != NULL)) {
-		assert(thread->owner_process == &kproc0);
-		vm_map_activate(thread->vm_ctx);
-	} else if (thread->user_thread) {
-		if (current->owner_process != thread->owner_process)
-			vm_map_activate(thread->owner_process->map);
-	}
-
 	plat_swtch(current, thread);
+
+	assert(current == curthread());
 
 	assert(current->status != THREAD_TERMINATING);
 
@@ -204,7 +211,7 @@ static void do_reschedule()
 
 void kthread_init(struct kthread *thread, const char *name,
 		  unsigned int initial_priority, struct kprocess *process,
-		  int user_thread)
+		  bool user_thread)
 {
 	spinlock_init(&thread->thread_lock);
 
@@ -348,17 +355,20 @@ loop:
 }
 
 static size_t count = 0;
+
+// Round Robin the next CPU
 static struct cpu *find_cpu()
 {
 	assert(cpus_online() != 0);
 
-	size_t cpu, i = 0,
-		    desired = __atomic_fetch_add(&count, 1, __ATOMIC_ACQUIRE) %
-			      cpus_online();
+	size_t desired =
+		__atomic_fetch_add(&count, 1, __ATOMIC_RELAXED) % cpus_online();
+	size_t i = 0;
 
-	for_each_cpu(cpu, &cpumask_active) {
+	size_t tmp;
+	for_each_cpu(tmp, &cpumask_active) {
 		if (i++ == desired)
-			return getcpu(cpu);
+			return getcpu(tmp);
 	}
 
 	pr_warn("find_cpu(): fallback to local core?\n");
@@ -438,6 +448,7 @@ void sched_exit_self()
 	spinlock_lock_noipl(&reaper_lock);
 	TAILQ_INSERT_HEAD(&reaper_queue, thread, queue_entry);
 	spinlock_unlock_noipl(&reaper_lock);
+
 	event_alarm(&reaper_ev);
 
 	thread->status = THREAD_TERMINATING;

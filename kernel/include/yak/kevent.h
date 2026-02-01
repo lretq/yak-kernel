@@ -8,7 +8,7 @@ extern "C" {
 
 /* semaphore that can only ever reach sigstate=1 */
 struct kevent {
-	struct kobject_header hdr;
+	struct kobject hdr;
 };
 
 #define KEVENT_NOTIF 0x1

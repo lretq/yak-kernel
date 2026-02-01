@@ -22,7 +22,7 @@ enum kobject_type {
 	OBJ_SYNC,
 };
 
-struct kobject_header {
+struct kobject {
 	struct spinlock obj_lock;
 	// immutable after creation
 	enum kobject_type obj_type;
@@ -34,11 +34,11 @@ struct kobject_header {
 	TAILQ_HEAD(, wait_block) obj_wait_list;
 };
 
-void kobject_init(struct kobject_header *hdr, int signalstate,
+void kobject_init(struct kobject *hdr, int signalstate,
 		  enum kobject_type type);
 
 // returns amount of threads woken
-int kobject_signal_locked(struct kobject_header *hdr, bool unblock_all);
+int kobject_signal_locked(struct kobject *hdr, bool unblock_all);
 
 #ifdef __cplusplus
 }

@@ -7,7 +7,7 @@ extern "C" {
 #include <yak/object.h>
 
 struct semaphore {
-	struct kobject_header hdr;
+	struct kobject hdr;
 };
 
 void semaphore_init(struct semaphore *sem, int sigstate);

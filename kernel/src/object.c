@@ -4,7 +4,7 @@
 #include <yak/queue.h>
 #include <yak/object.h>
 
-void kobject_init(struct kobject_header *hdr, int signalstate,
+void kobject_init(struct kobject *hdr, int signalstate,
 		  enum kobject_type type)
 {
 	spinlock_init(&hdr->obj_lock);
@@ -14,7 +14,7 @@ void kobject_init(struct kobject_header *hdr, int signalstate,
 	TAILQ_INIT(&hdr->obj_wait_list);
 }
 
-int kobject_signal_locked(struct kobject_header *hdr, bool unblock_all)
+int kobject_signal_locked(struct kobject *hdr, bool unblock_all)
 {
 	assert(spinlock_held(&hdr->obj_lock));
 	struct wait_block *wb;

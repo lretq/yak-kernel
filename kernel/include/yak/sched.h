@@ -19,6 +19,9 @@ extern "C" {
 #include <yak-private/profiler.h>
 #endif
 
+#define KTHREAD_MAX_NAME_LEN 32
+#define KTHREAD_INLINE_WAIT_BLOCKS 4
+
 enum {
 	SCHED_PRIO_IDLE = 0,
 	SCHED_PRIO_TIME_SHARE = 1, /* 1-16 */
@@ -28,25 +31,8 @@ enum {
 	SCHED_PRIO_MAX = 32,
 };
 
-#define WB_DEQUEUED 0x1
-#define WB_UNWAITED 0x2
-
-struct wait_block {
-	// thread waiting
-	struct kthread *thread;
-	// object being waited on
-	void *object;
-	// status to set in the thread for WAIT_TYPE_ANY
-	status_t status;
-	unsigned short flags;
-	// for inserting into object wait list
-	TAILQ_ENTRY(wait_block) entry;
-};
-
-#define KTHREAD_INLINE_WAIT_BLOCKS 4
-
 // current/soon-to-be state
-enum {
+enum thread_state {
 	// enqueued
 	THREAD_READY = 1,
 	// off-list, active
@@ -65,7 +51,7 @@ enum {
 
 // This solution comes from microsoft's channel9:
 // "Inside Windows 7: Arun Kishan - Farewell to the Windows Kernel Dispatcher Lock"
-enum {
+enum wait_phase {
 	WAIT_PHASE_NONE,
 	// Thread setting up wait logic
 	WAIT_PHASE_IN_PROGRESS,
@@ -75,8 +61,6 @@ enum {
 	// that was signaled in the middle of IN_PROGRESS
 	WAIT_PHASE_ABORTED,
 };
-
-#define KTHREAD_MAX_NAME_LEN 32
 
 struct kthread {
 	struct md_pcb pcb;
@@ -89,7 +73,7 @@ struct kthread {
 
 	void *kstack_top;
 
-	int user_thread;
+	bool user_thread;
 
 	struct wait_block *wait_blocks;
 	size_t wait_blocks_count;
@@ -127,7 +111,7 @@ typedef TAILQ_HEAD(thread_queue, kthread) thread_queue_t;
 
 void kthread_init(struct kthread *thread, const char *name,
 		  unsigned int initial_priority, struct kprocess *process,
-		  int user_thread);
+		  bool user_thread);
 
 status_t kernel_thread_create(const char *name, unsigned int priority,
 			      void *entry, void *context, int instant_launch,

@@ -82,8 +82,8 @@ static const struct termios default_termios =
 
 void tty_input(struct tty *tty, char c)
 {
-	assert(tty);
-	assert(tty->ldisc_ops);
+	if (!tty || !tty->ldisc_ops)
+		return;
 	tty->ldisc_ops->receive_char(tty, c);
 }
 

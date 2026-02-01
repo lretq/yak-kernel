@@ -34,6 +34,10 @@ typedef enum status {
 		0x8000, /* set when we waited for any of multiple objects successfully. The actual object index is ORd in. */
 } status_t;
 
+#define IS_WAIT_OK(x) \
+	(likely((x) == YAK_SUCCESS || ((x) & YAK_WAIT_SUCCESS) != 0))
+#define WAIT_INDEX(x) ((x) & (~YAK_WAIT_SUCCESS))
+
 #define IS_OK(x) (likely((x) == YAK_SUCCESS))
 #define IS_ERR(x) (unlikely((x) != YAK_SUCCESS))
 
