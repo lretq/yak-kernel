@@ -604,19 +604,17 @@ DEFINE_SYSCALL(SYS_GETDENTS, getdents, int fd, void *buffer, size_t max_size)
 {
 	pr_debug("getdents(%d, %p, %ld)\n", fd, buffer, max_size);
 	struct kprocess *proc = curproc();
-	struct file *file;
 
-	{
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			return SYS_ERR(EBADF);
-		}
-		file = desc->file;
-		file_ref(file);
+	struct file *file = getfile_ref(proc, fd);
+	if (!file) {
+		return SYS_ERR(EBADF);
 	}
 
 	guard_ref_adopt(file, file);
+
+	if (!(file->flags & FILE_READ)) {
+		return SYS_ERR(EBADF);
+	}
 
 	if (file->vnode->type != VDIR) {
 		return SYS_ERR(ENOTDIR);
@@ -624,8 +622,14 @@ DEFINE_SYSCALL(SYS_GETDENTS, getdents, int fd, void *buffer, size_t max_size)
 
 	struct vnode *vn = file->vnode;
 
+	size_t offset = file->offset;
+
 	size_t bytes_read;
-	RET_ERRNO_ON_ERR(VOP_GETDENTS(vn, buffer, max_size, &bytes_read));
+	RET_ERRNO_ON_ERR(
+		VOP_GETDENTS(vn, buffer, max_size, &offset, &bytes_read));
+
+	file->offset = offset;
+	pr_debug("getdents: read %ld; new offset: %ld\n", bytes_read, offset);
 
 	return SYS_OK(bytes_read);
 }

@@ -188,7 +188,8 @@ struct vn_ops {
 	status_t (*vn_inactive)(struct vnode *vp);
 
 	status_t (*vn_getdents)(struct vnode *vp, struct dirent *buf,
-				size_t bufsize, size_t *bytes_read);
+				size_t bufsize, size_t *offset,
+				size_t *bytes_read);
 
 	status_t (*vn_readlink)(struct vnode *vn, char **path);
 
@@ -227,8 +228,8 @@ void vnode_init(struct vnode *vn, struct vfs *vfs, struct vn_ops *ops,
 #define VOP_CREATE(vp, type, name, attr, out) \
 	vp->ops->vn_create(vp, type, name, attr, out)
 
-#define VOP_GETDENTS(vp, buf, bufsize, bytes_read) \
-	vp->ops->vn_getdents(vp, buf, bufsize, bytes_read)
+#define VOP_GETDENTS(vp, buf, count, off, read) \
+	vp->ops->vn_getdents(vp, buf, count, off, read)
 
 #define VOP_WRITE(vp, offset, buf, count) \
 	vp->ops->vn_write(vp, offset, buf, count)

@@ -104,7 +104,8 @@ static status_t devfs_symlink(struct vnode *parent, char *name, char *path,
 }
 
 static status_t devfs_getdents(struct vnode *vn, struct dirent *buf,
-			       size_t bufsize, size_t *bytes_read)
+			       size_t bufsize, size_t *offset,
+			       size_t *bytes_read)
 {
 	if (vn->type != VDIR) {
 		return YAK_NODIR;
@@ -114,11 +115,16 @@ static status_t devfs_getdents(struct vnode *vn, struct dirent *buf,
 
 	char *outp = (char *)buf;
 	size_t remaining = bufsize;
-	size_t written = 0;
+
+	size_t curr = 0;
 
 	struct ht_entry *elm;
 	HASHTABLE_FOR_EACH(&tvn->children, elm)
 	{
+		if (*offset > curr++) {
+			continue;
+		}
+
 		struct devfs_node *child = elm->value;
 		const char *name = elm->key;
 		size_t namelen = elm->key_len + 1;
@@ -138,10 +144,8 @@ static status_t devfs_getdents(struct vnode *vn, struct dirent *buf,
 
 		outp += reclen;
 		remaining -= reclen;
-		written += reclen;
+		*bytes_read += reclen;
 	}
-
-	*bytes_read = written;
 
 	return YAK_SUCCESS;
 }

@@ -587,7 +587,8 @@ void vfs_dump_rec(struct vnode *vn, const char *prefix)
 		return;
 	}
 
-	status_t res = VOP_GETDENTS(vn, (struct dirent *)buf, sizeof(buf),
+	size_t off = 0;
+	status_t res = VOP_GETDENTS(vn, (struct dirent *)buf, sizeof(buf), &off,
 				    &bytes_read);
 	if (res != YAK_SUCCESS) {
 		pr_error("%s<failed to read dir>\n", prefix);

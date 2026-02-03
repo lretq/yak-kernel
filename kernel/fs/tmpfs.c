@@ -163,7 +163,8 @@ static status_t tmpfs_readlink(struct vnode *vn, char **path)
 }
 
 static status_t tmpfs_getdents(struct vnode *vn, struct dirent *buf,
-			       size_t bufsize, size_t *bytes_read)
+			       size_t bufsize, size_t *offset,
+			       size_t *bytes_read)
 {
 	if (vn->type != VDIR) {
 		return YAK_NODIR;
@@ -173,11 +174,16 @@ static status_t tmpfs_getdents(struct vnode *vn, struct dirent *buf,
 
 	char *outp = (char *)buf;
 	size_t remaining = bufsize;
-	size_t written = 0;
+	size_t curr = 0;
+	size_t read = 0;
 
 	struct ht_entry *elm;
 	HASHTABLE_FOR_EACH(&tvn->children, elm)
 	{
+		if (*offset > curr++) {
+			continue;
+		}
+
 		struct tmpfs_node *child = elm->value;
 		const char *name = elm->key;
 		size_t namelen = elm->key_len + 1;
@@ -198,10 +204,11 @@ static status_t tmpfs_getdents(struct vnode *vn, struct dirent *buf,
 
 		outp += reclen;
 		remaining -= reclen;
-		written += reclen;
+		read += reclen;
 	}
 
-	*bytes_read = written;
+	*bytes_read = read;
+	*offset = curr;
 
 	return YAK_SUCCESS;
 }
