@@ -13,6 +13,20 @@
 #define O_NOFOLLOW 0400000
 #define O_CLOEXEC 02000000
 
+#if defined(__x86_64__) || defined(__i386__) || defined(__riscv) || defined(__loongarch64)
+#define O_DIRECT      040000
+#define O_LARGEFILE  0100000
+#define O_DIRECTORY  0200000
+#define O_NOFOLLOW   0400000
+#elif defined(__aarch64__) || defined(__m68k__)
+#define O_DIRECTORY   040000
+#define O_NOFOLLOW   0100000
+#define O_DIRECT     0200000
+#define O_LARGEFILE  0400000
+#else
+#warning "Missing <fcntl.h> support for this architecture!"
+#endif
+
 #define F_DUPFD 0
 #define F_GETFD 1
 #define F_SETFD 2

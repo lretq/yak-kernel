@@ -17,22 +17,7 @@
 #include <yak-abi/fcntl.h>
 #include <yak-abi/mode_t.h>
 
-static struct file *getfile_ref(struct kprocess *proc, int fd)
-{
-	struct file *file;
-
-	guard(mutex)(&proc->fd_mutex);
-
-	struct fd *desc = fd_safe_get(proc, fd);
-	if (!desc) {
-		return NULL;
-	}
-
-	file = desc->file;
-	file_ref(file);
-
-	return file;
-}
+#include "common.h"
 
 static unsigned int convert_accmode(unsigned int flags)
 {
@@ -271,6 +256,11 @@ DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 
 	RET_ERRNO_ON_ERR(res);
 
+	if (flags & O_DIRECTORY && vn->type != VDIR) {
+		vnode_deref(vn);
+		return SYS_ERR(ENOTDIR);
+	}
+
 	guard(mutex)(&proc->fd_mutex);
 
 	int fd;
@@ -333,7 +323,7 @@ DEFINE_SYSCALL(SYS_DUP2, dup2, int oldfd, int newfd)
 
 DEFINE_SYSCALL(SYS_WRITE, write, int fd, const char *buf, size_t count)
 {
-	pr_extra_debug("sys_write: %d %p %ld\n", fd, buf, count);
+	pr_debug("sys_write: %d %p %ld\n", fd, buf, count);
 
 	struct kprocess *proc = curproc();
 	struct file *file;
@@ -365,19 +355,13 @@ DEFINE_SYSCALL(SYS_WRITE, write, int fd, const char *buf, size_t count)
 
 DEFINE_SYSCALL(SYS_READ, read, int fd, char *buf, size_t count)
 {
-	pr_extra_debug("sys_read: %d %p %ld\n", fd, buf, count);
+	pr_debug("sys_read: %d %p %ld\n", fd, buf, count);
 
 	struct kprocess *proc = curproc();
-	struct file *file;
 
-	{
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			return SYS_ERR(EBADF);
-		}
-		file = desc->file;
-		file_ref(file);
+	struct file *file = getfile_ref(proc, fd);
+	if (!file) {
+		return SYS_ERR(EBADF);
 	}
 
 	guard_ref_adopt(file, file);
