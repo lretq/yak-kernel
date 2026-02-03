@@ -7,4 +7,5 @@ yak_add_sources(
 	exec.c
 	syscall.c
 	waitpid.c
+	poll.c
 )

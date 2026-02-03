@@ -322,7 +322,7 @@ static struct tmpfs_node *create_node(struct vfs *vfs, enum vtype type)
 
 	memset(node, 0, sizeof(struct tmpfs_node));
 
-	VOP_INIT(&node->vnode, vfs, &tmpfs_vn_op, type);
+	vnode_init(&node->vnode, vfs, &tmpfs_vn_op, type);
 
 	if (type == VDIR) {
 		ht_init(&node->children, ht_hash_str, ht_eq_str);

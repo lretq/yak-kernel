@@ -13,8 +13,9 @@ struct kevent {
 
 #define KEVENT_NOTIF 0x1
 
-void event_init(struct kevent *event, int sigstate, int flags);
-void event_alarm(struct kevent *event);
+void event_init(struct kevent *event, bool sigstate, int flags);
+void event_alarm(struct kevent *event, bool wake_all);
+void event_clear(struct kevent *event);
 
 #ifdef __cplusplus
 }

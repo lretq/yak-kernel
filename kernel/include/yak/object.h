@@ -34,8 +34,7 @@ struct kobject {
 	TAILQ_HEAD(, wait_block) obj_wait_list;
 };
 
-void kobject_init(struct kobject *hdr, int signalstate,
-		  enum kobject_type type);
+void kobject_init(struct kobject *hdr, int signalstate, enum kobject_type type);
 
 // returns amount of threads woken
 int kobject_signal_locked(struct kobject *hdr, bool unblock_all);

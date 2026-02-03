@@ -51,7 +51,7 @@ void vfs_init()
 	ht_init(&filesystems, ht_hash_str, ht_eq_str);
 
 	root_node = kmalloc(sizeof(struct vnode));
-	VOP_INIT(root_node, NULL, &root_ops, VDIR);
+	vnode_init(root_node, NULL, &root_ops, VDIR);
 }
 
 INIT_STAGE(vfs);
@@ -623,4 +623,20 @@ void vfs_dump(const char *path)
 {
 	printk(0, "%s\n", path);
 	vfs_dump_rec(VFS_GETROOT(root_node->mounted_vfs), "");
+}
+
+void vnode_init(struct vnode *vn, struct vfs *vfs, struct vn_ops *ops,
+		enum vtype type)
+{
+	vn->ops = ops;
+	vn->type = type;
+	vn->refcnt = 1;
+	vn->vfs = vfs;
+	vn->mounted_vfs = NULL;
+	vn->node_covered = NULL;
+	vn->filesize = 0;
+	vn->vobj = NULL;
+	vn->flags = 0;
+	kmutex_init(&vn->lock, "vnode");
+	event_init(&vn->poll_event, false, 0);
 }

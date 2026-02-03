@@ -36,6 +36,7 @@
 	X(SYS_GETDENTS, sys_getdents)       \
 	X(SYS_FACCESSAT, sys_faccessat)     \
 	X(SYS_WAITPID, sys_waitpid)         \
+	X(SYS_POLL, sys_poll)               \
 	X(SYS_DEBUG_SLEEP, sys_debug_sleep) \
 	X(SYS_DEBUG_LOG, sys_debug_log)
 

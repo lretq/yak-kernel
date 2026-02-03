@@ -1,3 +1,4 @@
+#include "yak-abi/poll.h"
 #include <string.h>
 #include <yak/kevent.h>
 #include <yak/ringbuffer.h>
@@ -166,11 +167,19 @@ status_t tty_ioctl(int minor, unsigned long com, void *data, int *ret)
 	}
 }
 
+status_t tty_poll(int minor, short events, short *revents)
+{
+	struct tty *tty = ttys[minor];
+	assert(tty);
+	return tty->ldisc_ops->poll(tty, events, revents);
+}
+
 struct device_ops tty_ops = (struct device_ops){
 	.dev_read = tty_read,
 	.dev_write = tty_write,
 	.dev_open = tty_open,
 	.dev_ioctl = tty_ioctl,
+	.dev_poll = tty_poll,
 };
 
 struct tty *tty_create(const char *name, struct tty_driver_ops *driver_ops,
@@ -208,7 +217,7 @@ struct tty *tty_create(const char *name, struct tty_driver_ops *driver_ops,
 
 	tty->termios = default_termios;
 
-	event_init(&tty->data_available, 0, 0);
+	event_init(&tty->data_available, 0, KEVENT_NOTIF);
 
 	tty->driver_ops = driver_ops;
 	if (ldisc_ops == NULL)

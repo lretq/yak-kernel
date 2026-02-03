@@ -16,6 +16,8 @@ struct device_ops {
 
 	status_t (*dev_ioctl)(int minor, unsigned long com, void *data,
 			      int *ret);
+
+	status_t (*dev_poll)(int minor, short events, short *revents);
 };
 
 enum {

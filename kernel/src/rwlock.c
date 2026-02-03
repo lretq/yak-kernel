@@ -67,7 +67,7 @@ void rwlock_release_shared(struct rwlock *rwlock)
 	// only alarm when we're the last one
 	// No need to wake up exclusive waiters if there is still someone left
 	if ((prev & RWLOCK_READER_MASK) == 1)
-		event_alarm(&rwlock->event);
+		event_alarm(&rwlock->event, false);
 }
 
 status_t rwlock_acquire_exclusive(struct rwlock *rwlock, nstime_t timeout)
@@ -117,7 +117,7 @@ void rwlock_release_exclusive(struct rwlock *rwlock)
 	__atomic_fetch_sub(&rwlock->exclusive_count, 1, __ATOMIC_ACQ_REL);
 	__atomic_store_n(&rwlock->exclusive_owner, NULL, __ATOMIC_RELEASE);
 	__atomic_fetch_and(&rwlock->state, ~RWLOCK_EXCLUSIVE, __ATOMIC_RELEASE);
-	event_alarm(&rwlock->event);
+	event_alarm(&rwlock->event, false);
 }
 
 void rwlock_upgrade_to_exclusive(struct rwlock *rwlock)

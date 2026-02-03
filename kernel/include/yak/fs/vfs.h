@@ -152,6 +152,8 @@ struct vnode {
 	refcount_t refcnt;
 	struct kmutex lock;
 
+	struct kevent poll_event;
+
 	struct vfs *vfs;
 	struct vfs *mounted_vfs;
 	struct vnode *node_covered;
@@ -213,19 +215,12 @@ struct vn_ops {
 
 	status_t (*vn_setattr)(struct vnode *vp, unsigned int what,
 			       struct vattr *vattr);
+
+	status_t (*vn_poll)(struct vnode *vp, short events, short *revents);
 };
 
-#define VOP_INIT(vn, vfs_, ops_, type_)    \
-	(vn)->ops = ops_;                  \
-	(vn)->type = type_;                \
-	(vn)->refcnt = 1;                  \
-	kmutex_init(&(vn)->lock, "vnode"); \
-	(vn)->vfs = vfs_;                  \
-	(vn)->mounted_vfs = NULL;          \
-	(vn)->node_covered = NULL;         \
-	(vn)->filesize = 0;                \
-	(vn)->vobj = NULL;                 \
-	(vn)->flags = 0;
+void vnode_init(struct vnode *vn, struct vfs *vfs, struct vn_ops *ops,
+		enum vtype type);
 
 #define VOP_LOOKUP(vp, name, out) vp->ops->vn_lookup(vp, name, out)
 
@@ -261,6 +256,8 @@ struct vn_ops {
 
 #define VOP_GETATTR(vp, buf) (vp)->ops->vn_getattr(vp, buf)
 #define VOP_SETATTR(vp, what, attr) (vp)->ops->vn_setattr((vp), what, attr)
+
+#define VOP_POLL(vp, mask, ret) (vp)->ops->vn_poll((vp), mask, ret)
 
 GENERATE_REFMAINT_INLINE(vnode, refcnt, p->ops->vn_inactive)
 

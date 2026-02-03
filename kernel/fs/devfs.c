@@ -210,6 +210,17 @@ static status_t devfs_ioctl(struct vnode *vn, unsigned long com, void *data,
 	return node->dev_ops->dev_ioctl(node->minor, com, data, ret);
 }
 
+static status_t devfs_poll(struct vnode *vn, short events, short *revents)
+{
+	struct devfs_node *node = (struct devfs_node *)vn;
+	if (!node->dev_ops->dev_poll) {
+		*revents = events;
+		return YAK_SUCCESS;
+	}
+
+	return node->dev_ops->dev_poll(node->minor, events, revents);
+}
+
 static struct vn_ops devfs_vn_op = {
 	.vn_lookup = devfs_lookup,
 	.vn_create = devfs_create,
@@ -223,6 +234,7 @@ static struct vn_ops devfs_vn_op = {
 	.vn_write = devfs_write,
 	.vn_open = devfs_open,
 	.vn_ioctl = devfs_ioctl,
+	.vn_poll = devfs_poll,
 };
 
 static status_t devfs_mount(struct vnode *vn);
@@ -288,7 +300,7 @@ static struct devfs_node *create_node(struct vfs *vfs, enum vtype type,
 	node->inode = __atomic_fetch_add(&((struct devfs *)vfs)->seq_ino, 1,
 					 __ATOMIC_RELAXED);
 
-	VOP_INIT(&node->vnode, vfs, &devfs_vn_op, type);
+	vnode_init(&node->vnode, vfs, &devfs_vn_op, type);
 
 	return node;
 }

@@ -28,6 +28,7 @@ struct tty_ldisc_ops {
 	void (*attach)(struct tty *tty);
 	status_t (*ioctl)(struct tty *tty, unsigned long com, void *data,
 			  int *ret);
+	status_t (*poll)(struct tty *tty, short mask, short *ret);
 };
 
 // processing flows:

@@ -11,7 +11,7 @@
 
 void kmutex_init(struct kmutex *mutex, [[maybe_unused]] const char *name)
 {
-	event_init(&mutex->event, 0, 0);
+	event_init(&mutex->event, false, 0);
 #ifdef CONFIG_DEBUG
 	mutex->name = name;
 #endif
@@ -65,7 +65,7 @@ void kmutex_release(struct kmutex *mutex)
 	if (likely(__atomic_compare_exchange_n(&mutex->owner, &desired, NULL, 0,
 					       __ATOMIC_ACQ_REL,
 					       __ATOMIC_RELAXED))) {
-		event_alarm(&mutex->event);
+		event_alarm(&mutex->event, false);
 		return;
 	}
 

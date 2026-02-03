@@ -1,3 +1,4 @@
+#include "yak-abi/poll.h"
 #include <string.h>
 #include <yak-abi/termios.h>
 #include <yak-abi/ioctls.h>
@@ -46,6 +47,8 @@ static void receive_char(struct tty *tty, char c)
 			guard(mutex)(&tty->read_mutex);
 			ringbuffer_put(&tty->read_buf, tty->canonical_buf,
 				       tty->canonical_pos);
+			event_alarm(&tty->vnode->poll_event, true);
+			event_alarm(&tty->data_available, false);
 		}
 
 		return;
@@ -53,6 +56,8 @@ static void receive_char(struct tty *tty, char c)
 
 	guard(mutex)(&tty->read_mutex);
 	ringbuffer_put(&tty->read_buf, &c, 1);
+	event_alarm(&tty->vnode->poll_event, true);
+	event_alarm(&tty->data_available, false);
 }
 
 static size_t check_line(struct ringbuffer *rb, struct termios *t)
@@ -93,18 +98,31 @@ static status_t read(struct tty *tty, char *buf, size_t len, size_t *read_bytes)
 		} else {
 			while (ringbuffer_available(&tty->read_buf) <
 			       t->c_cc[VMIN]) {
-				kmutex_release(&tty->read_mutex);
 				nstime_t tm = TIMEOUT_INFINITE;
+
 				if (t->c_cc[VTIME] > 0) {
 					tm = t->c_cc[VTIME] * 100000000L;
 				}
-				sched_wait(&tty->data_available,
-					   WAIT_MODE_BLOCK, tm);
+
+				kmutex_release(&tty->read_mutex);
+
+				status_t res = sched_wait(&tty->data_available,
+							  WAIT_MODE_BLOCK, tm);
+
+				if (IS_ERR(res)) {
+					return res;
+				}
+
+				kmutex_acquire(&tty->read_mutex,
+					       TIMEOUT_INFINITE);
 			}
 		}
 
-		kmutex_acquire(&tty->read_mutex, TIMEOUT_INFINITE);
 		*read_bytes = ringbuffer_get(&tty->read_buf, buf, len);
+	}
+
+	if (ringbuffer_available(&tty->read_buf) == 0) {
+		event_clear(&tty->data_available);
 	}
 
 	kmutex_release(&tty->read_mutex);
@@ -158,12 +176,28 @@ static status_t ioctl(struct tty *tty, unsigned long com, void *data, int *ret)
 	return YAK_SUCCESS;
 }
 
+static status_t poll(struct tty *tty, short mask, short *ret)
+{
+	if (mask & POLLOUT)
+		*ret |= POLLOUT;
+
+	if (mask & POLLIN) {
+		guard(mutex)(&tty->read_mutex);
+		if (ringbuffer_available(&tty->read_buf)) {
+			*ret |= POLLIN;
+		}
+	}
+
+	return YAK_SUCCESS;
+}
+
 struct tty_ldisc_ops n_tty_ldisc = {
 	.receive_char = receive_char,
 	.write = write,
 	.read = read,
 	.flush = flush,
 	.ioctl = ioctl,
+	.poll = poll,
 };
 
 struct tty_ldisc_ops *get_n_tty_ldisc()
