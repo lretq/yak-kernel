@@ -18,7 +18,11 @@ DEFINE_SYSCALL(SYS_FORK, fork)
 	struct kthread *cur_thread = curthread();
 	struct kprocess *new_proc = kmalloc(sizeof(struct kprocess));
 	assert(new_proc);
+
 	uprocess_init(new_proc, cur_proc);
+
+	struct vnode *old_cwd = process_getcwd(cur_proc);
+	process_setcwd(new_proc, old_cwd);
 
 	vm_map_fork(cur_proc->map, new_proc->map);
 
