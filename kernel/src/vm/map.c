@@ -40,6 +40,17 @@ struct vm_map *kmap()
 	return &kernel_map;
 }
 
+static struct vm_map_entry *alloc_map_entry()
+{
+	// XXX: slab
+	return kzalloc(sizeof(struct vm_map_entry));
+}
+
+static void free_map_entry(struct vm_map_entry *entry)
+{
+	kfree(entry, sizeof(struct vm_map_entry));
+}
+
 status_t vm_map_init(struct vm_map *map)
 {
 	rwlock_init(&map->map_lock, "map_lock");
@@ -55,16 +66,25 @@ status_t vm_map_init(struct vm_map *map)
 	return YAK_SUCCESS;
 }
 
-static struct vm_map_entry *alloc_map_entry()
+void vm_map_destroy(struct vm_map *map)
 {
-	// XXX: slab
-	return kzalloc(sizeof(struct vm_map_entry));
-}
+	EXPECT(rwlock_acquire_exclusive(&map->map_lock, TIMEOUT_INFINITE));
 
-[[maybe_unused]]
-static void free_map_entry(struct vm_map_entry *entry)
-{
-	kfree(entry, sizeof(struct vm_map_entry));
+	while (!RBT_EMPTY(vm_map_rbtree, &map->map_tree)) {
+		struct vm_map_entry *entry =
+			RBT_ROOT(vm_map_rbtree, &map->map_tree);
+		RBT_REMOVE(vm_map_rbtree, &map->map_tree, entry);
+
+		if (entry->type == VM_MAP_ENT_OBJ) {
+			if (entry->amap)
+				vm_amap_deref(entry->amap);
+			vm_object_deref(entry->object);
+		}
+
+		free_map_entry(entry);
+	}
+
+	pmap_destroy(&map->pmap);
 }
 
 static void init_map_entry(struct vm_map_entry *entry, voff_t offset,

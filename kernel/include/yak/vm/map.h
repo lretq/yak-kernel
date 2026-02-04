@@ -73,6 +73,8 @@ struct vm_map *kmap();
  */
 status_t vm_map_init(struct vm_map *map);
 
+void vm_map_destroy(struct vm_map *map);
+
 /*!
  * @brief Allocate virtual address from the map arena
  *
