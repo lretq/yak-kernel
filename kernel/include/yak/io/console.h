@@ -6,6 +6,7 @@ extern "C" {
 
 #include <stddef.h>
 #include <yak/queue.h>
+#include <yak-abi/termios.h>
 
 struct console {
 	char name[32];
@@ -14,6 +15,8 @@ struct console {
 			size_t length);
 
 	void *private;
+
+	struct winsize native_winsize;
 
 	TAILQ_ENTRY(console) console_list_entry;
 	TAILQ_ENTRY(console) sink_list_entry;

@@ -131,14 +131,19 @@ status_t tty_open(int minor, struct vnode **vp)
 status_t tty_core_ioctl(struct tty *tty, unsigned long com, void *data,
 			int *ret)
 {
+	(void)ret;
+
 	switch (com) {
-	case TIOCGWINSZ:
+	case TIOCSWINSZ: {
 		struct winsize *wsz = data;
-		wsz->ws_row = 80;
-		wsz->ws_col = 25;
-		wsz->ws_xpixel = 0;
-		wsz->ws_ypixel = 0;
+		memcpy(&tty->winsize, wsz, sizeof(struct winsize));
 		return YAK_SUCCESS;
+	}
+	case TIOCGWINSZ: {
+		struct winsize *wsz = data;
+		memcpy(wsz, &tty->winsize, sizeof(struct winsize));
+		return YAK_SUCCESS;
+	}
 	case TIOCGPGRP:
 	case TIOCSPGRP:
 		return YAK_SUCCESS;
@@ -217,7 +222,7 @@ struct tty *tty_create(const char *name, struct tty_driver_ops *driver_ops,
 
 	tty->termios = default_termios;
 
-	event_init(&tty->data_available, 0, KEVENT_NOTIF);
+	event_init(&tty->data_available, false, KEVENT_NOTIF);
 
 	tty->driver_ops = driver_ops;
 	if (ldisc_ops == NULL)
@@ -231,6 +236,9 @@ struct tty *tty_create(const char *name, struct tty_driver_ops *driver_ops,
 
 	memset(tty->canonical_buf, 0, TTY_BUF_SIZE);
 	tty->canonical_pos = 0;
+
+	assert(tty->driver_ops->get_native_winsize);
+	tty->driver_ops->get_native_winsize(tty, &tty->winsize);
 
 	struct vnode *vn;
 	devfs_register(tty->name, VCHR, DEV_TTY, minor, &tty_ops, &vn);

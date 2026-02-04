@@ -16,6 +16,7 @@ struct tty_driver_ops {
 	ssize_t (*write)(struct tty *tty, const char *buf, size_t len);
 	void (*flush)(struct tty *tty);
 	void (*set_termios)(struct tty *tty, const struct termios *newt);
+	void (*get_native_winsize)(struct tty *tty, struct winsize *ws);
 };
 
 struct tty_ldisc_ops {
@@ -54,6 +55,7 @@ struct tty {
 	struct kprocess *session;
 
 	struct termios termios;
+	struct winsize winsize;
 
 	struct kevent data_available;
 
