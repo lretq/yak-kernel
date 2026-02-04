@@ -372,13 +372,11 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 
 	// don't resolve cwd, because we don't want
 	// to access a newly mounted filesystem
-	struct vnode *current;
-	if (cwd == NULL) {
-		current = (path_[0] == '/') ? vfs_getroot() :
-					      process_getcwd(curproc());
-	} else {
-		assert(path_[0] != '/');
-		current = cwd;
+	struct vnode *current = cwd;
+	if (path_[0] == '/') {
+		current = vfs_getroot();
+	} else if (cwd == NULL) {
+		current = process_getcwd(curproc());
 	}
 
 	assert(current);
