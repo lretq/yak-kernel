@@ -285,14 +285,14 @@ static void sched_rq_insert(struct runqueue *rq, struct kthread *thread)
 	assert(thread);
 	assert(rq);
 
-	thread_queue_t *queue = &rq->queues[thread->priority];
+	thread_queue_t *queue = &rq->queues[thread->priority - 1];
 	assert(queue);
 
 	assert(queue->tqh_last);
 	TAILQ_INSERT_TAIL(queue, thread, queue_entry);
 	assert(TAILQ_FIRST(queue) != NULL);
 
-	rq->ready_mask |= (1UL << thread->priority);
+	rq->ready_mask |= (1UL << (thread->priority - 1));
 }
 
 void sched_insert(struct cpu *cpu, struct kthread *thread, int isOther)
