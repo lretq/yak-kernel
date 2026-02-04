@@ -18,9 +18,14 @@ struct pollfd {
 };
 
 // implements ppoll
-DEFINE_SYSCALL(SYS_POLL, poll, struct pollfd *fds, size_t nfds)
+DEFINE_SYSCALL(SYS_POLL, poll, struct pollfd *fds, size_t nfds,
+	       const struct timespec *timeout, const void *mask)
 {
-	pr_debug("sys_poll()\n");
+	nstime_t timeout_ns = TIMEOUT_INFINITE;
+	if (timeout) {
+		timeout_ns = STIME(timeout->tv_sec) + timeout->tv_nsec;
+		pr_debug("sys_poll(timeout=%ld)\n", timeout_ns);
+	}
 
 	struct kprocess *proc = curproc();
 
@@ -70,7 +75,7 @@ DEFINE_SYSCALL(SYS_POLL, poll, struct pollfd *fds, size_t nfds)
 			ready_count++;
 	}
 
-	if (ready_count) {
+	if (timeout_ns == 0 || ready_count) {
 		goto Cleanup;
 	}
 
@@ -81,8 +86,7 @@ DEFINE_SYSCALL(SYS_POLL, poll, struct pollfd *fds, size_t nfds)
 
 	while (ready_count == 0) {
 		sched_wait_many(wait_blocks, events, event_count,
-				WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
-				TIMEOUT_INFINITE);
+				WAIT_MODE_BLOCK, WAIT_TYPE_ANY, timeout_ns);
 
 		for (size_t i = 0; i < nfds; i++) {
 			struct pollfd *entry = &fds[i];
