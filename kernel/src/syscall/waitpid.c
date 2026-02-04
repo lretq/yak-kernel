@@ -24,7 +24,7 @@ static void reap_zombie(struct kprocess *zombie, int *status)
 
 	LIST_REMOVE(zombie, child_list_entry);
 
-	pr_warn("impl process destruction!\n");
+	process_destroy(zombie);
 }
 
 DEFINE_SYSCALL(SYS_WAITPID, waitpid, pid_t pid, int *status, int flags)

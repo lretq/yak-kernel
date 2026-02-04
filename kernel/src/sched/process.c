@@ -1,7 +1,9 @@
+#include <yak/vm/map.h>
 #include <yak/queue.h>
 #include <yak/semaphore.h>
 #include <yak/heap.h>
 #include <yak/init.h>
+#include <yak/log.h>
 #include <yak/status.h>
 #include <stdint.h>
 #include <string.h>
@@ -175,6 +177,17 @@ void process_set_exit_status(struct kprocess *proc, int status)
 	if (!__atomic_test_and_set(&proc->is_exiting, __ATOMIC_ACQ_REL)) {
 		__atomic_store_n(&proc->exit_status, status, __ATOMIC_RELEASE);
 	}
+}
+
+void process_destroy(struct kprocess *process)
+{
+	if (process->pid == 0 || process->pid == 1)
+		panic("try to destroy init or kernel\n");
+
+	pr_warn("implement full process destruction!\n");
+
+	// biggest memory hog
+	vm_map_destroy(process->map);
 }
 
 INIT_DEPS(proc);

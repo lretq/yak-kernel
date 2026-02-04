@@ -109,6 +109,8 @@ void kprocess_init(struct kprocess *process);
 // initialize the kernel+user parts of a process
 void uprocess_init(struct kprocess *process, struct kprocess *parent);
 
+void process_destroy(struct kprocess *process);
+
 struct kprocess *lookup_pid(pid_t pid);
 struct session *lookup_sid(pid_t sid);
 struct pgrp *lookup_pgid(pid_t pgid);
