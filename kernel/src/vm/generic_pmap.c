@@ -18,6 +18,48 @@
 #define PTE_LOAD(p) (__atomic_load_n((p), __ATOMIC_SEQ_CST))
 #define PTE_STORE(p, x) (__atomic_store_n((p), (x), __ATOMIC_SEQ_CST))
 
+static void pmap_free_table_level(pte_t *table, size_t lvl)
+{
+	size_t limit = PMAP_LEVEL_ENTRIES[lvl];
+
+	// Dont free kernel page tables!
+	// XXX: is this universal or x86 specific?
+	if (lvl == PMAP_LEVELS - 1) {
+		limit /= 2;
+	}
+
+	for (size_t i = 0; i < limit; i++) {
+		pte_t *ptep = &table[i];
+		pte_t pte = PTE_LOAD(ptep);
+
+		if (pte_is_zero(pte)) {
+			continue;
+		}
+
+		if (lvl != 0 && !pte_is_large(pte, lvl)) {
+			uintptr_t pa = pte_paddr(pte);
+			pte_t *child = (pte_t *)p2v(pa);
+			pmap_free_table_level(child, lvl - 1);
+			pmm_free(pa);
+		}
+
+		PTE_STORE(ptep, 0);
+	}
+}
+
+void pmap_destroy(struct pmap *pmap)
+{
+	assert(pmap->top_level != 0);
+
+	pte_t *toplevel = (pte_t *)p2v(pmap->top_level);
+
+	pmap_free_table_level(toplevel, PMAP_LEVELS - 1);
+
+	pmm_free(pmap->top_level);
+
+	pmap->top_level = 0;
+}
+
 static pte_t *pte_fetch(struct pmap *pmap, uintptr_t va, size_t atLevel,
 			int alloc)
 {
