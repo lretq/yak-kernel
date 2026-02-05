@@ -24,7 +24,14 @@ DEFINE_SYSCALL(SYS_POLL, poll, struct pollfd *fds, size_t nfds,
 	nstime_t timeout_ns = TIMEOUT_INFINITE;
 	if (timeout) {
 		timeout_ns = STIME(timeout->tv_sec) + timeout->tv_nsec;
-		pr_debug("sys_poll(timeout=%ld)\n", timeout_ns);
+	}
+
+	if (nfds == 0) {
+		if (timeout == NULL)
+			return SYS_ERR(EINVAL);
+
+		ksleep(timeout_ns);
+		return SYS_OK(0);
 	}
 
 	struct kprocess *proc = curproc();
