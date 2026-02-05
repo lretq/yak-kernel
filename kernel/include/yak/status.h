@@ -54,6 +54,13 @@ typedef enum status {
 		}                                                             \
 	} while (0)
 
+#define TRY(expr)                     \
+	do {                          \
+		status_t rv = (expr); \
+		if (IS_ERR(rv))       \
+			return rv;    \
+	} while (0)
+
 const char *status_str(status_t status);
 int status_errno(status_t status);
 

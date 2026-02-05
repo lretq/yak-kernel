@@ -37,8 +37,8 @@ static size_t setup_auxv(struct auxv_pair *auxv, struct load_info *info)
 	return i;
 }
 
-status_t launch_elf(struct kprocess *proc, char *path, int priority,
-		    char **argv_strings, char **envp_strings,
+status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
+		    int priority, char **argv_strings, char **envp_strings,
 		    struct kthread **thread_out)
 {
 	assert(proc);
@@ -46,37 +46,21 @@ status_t launch_elf(struct kprocess *proc, char *path, int priority,
 	assert(argv_strings);
 	assert(envp_strings);
 
-	struct vnode *vn;
-	status_t status = vfs_open(path, NULL, 0, &vn);
-	IF_ERR(status)
-	{
-		return status;
+	status_t rv = YAK_SUCCESS;
+	struct vm_map *orig_map = NULL;
+
+	struct vnode *vn = NULL;
+	TRY(vfs_open(path, NULL, 0, &vn));
+
+	struct kthread *thrd = kzalloc(sizeof *thrd);
+	if (!thrd) {
+		goto Cleanup;
 	}
 
-	struct kthread *thrd = kmalloc(sizeof(struct kthread));
-	assert(thrd);
-	kthread_init(thrd, argv_strings[0], priority, proc, 1);
+	// Don't init thread yet. Defer joining the process thread list until we are set up.
+	// (or else we would be added to the process' thread list!)
 
-	// Allocate kernel stack
-	vaddr_t stack_addr = (vaddr_t)vm_kalloc(KSTACK_SIZE, 0);
-	stack_addr += KSTACK_SIZE;
-
-	thrd->kstack_top = (void *)stack_addr;
-
-	// make sure we're in the right vm context
-	vm_map_tmp_switch(proc->map);
-	struct load_info info;
-	// load the elf into our address space
-	EXPECT(elf_load(vn, proc, &info, 0));
-
-	// allocate stack afterwards, as proc may be static and not relocatable
-	vaddr_t user_stack_addr;
-	EXPECT(vm_map(proc->map, NULL, USER_STACK_LENGTH, 0, VM_RW | VM_USER,
-		      VM_INHERIT_COPY, VM_CACHE_DEFAULT, USER_STACK_BASE, 0,
-		      &user_stack_addr));
-	user_stack_addr += USER_STACK_LENGTH;
-	assert((user_stack_addr & 15) == 0);
-
+	// Count argv and envp entries
 	size_t argc = 0;
 	for (size_t i = 0; argv_strings[i]; i++) {
 		argc++;
@@ -87,11 +71,47 @@ status_t launch_elf(struct kprocess *proc, char *path, int priority,
 		envc++;
 	}
 
+	// Again, make sure all the allocations can be filled
 	char **argv_ptr = kzalloc(argc * sizeof(char *));
-	guard(autofree)(argv_ptr, argc * sizeof(char *));
+	if (!argv_ptr) {
+		goto Cleanup;
+	}
 
 	char **envp_ptr = kzalloc(envc * sizeof(char *));
-	guard(autofree)(envp_ptr, envc * sizeof(char *));
+	if (!envp_ptr) {
+		goto Cleanup;
+	}
+
+	// Allocate kernel stack
+	void *stack_ptr = vm_kalloc(KSTACK_SIZE, 0);
+	if (!stack_ptr) {
+		goto Cleanup;
+	}
+
+	vaddr_t stack_addr = (vaddr_t)stack_ptr;
+	stack_addr += KSTACK_SIZE;
+
+	// Make sure we're in the right vm context
+	orig_map = vm_map_tmp_switch(map);
+
+	struct load_info info;
+	// Then load the elf into our address space
+	rv = elf_load(vn, map, &info, 0);
+	if (IS_ERR(rv)) {
+		// If this fails, the caller has to clean up or destroy the map!
+		goto Cleanup;
+	}
+
+	// Allocate the user stack afterwards, the ELF may be static and not relocatable
+	vaddr_t user_stack_addr;
+	rv = vm_map(map, NULL, USER_STACK_LENGTH, 0, VM_RW | VM_USER,
+		    VM_INHERIT_COPY, VM_CACHE_DEFAULT, USER_STACK_BASE, 0,
+		    &user_stack_addr);
+	if (IS_ERR(rv)) {
+		goto Cleanup;
+	}
+	user_stack_addr += USER_STACK_LENGTH;
+	assert((user_stack_addr & 15) == 0);
 
 	for (size_t i = 0; i < argc; i++) {
 		size_t len = strlen(argv_strings[i]) + 1;
@@ -155,7 +175,10 @@ status_t launch_elf(struct kprocess *proc, char *path, int priority,
 
 	pr_extra_debug("argc at %p\n", sp);
 
-	vm_map_tmp_disable();
+	vm_map_tmp_disable(orig_map);
+
+	kthread_init(thrd, argv_strings[0], priority, proc, true);
+	thrd->kstack_top = (void *)stack_addr;
 
 	assert(IS_ALIGNED_POW2((uintptr_t)sp, 16));
 	kthread_context_init(thrd, thrd->kstack_top, kernel_enter_userspace,
@@ -164,4 +187,31 @@ status_t launch_elf(struct kprocess *proc, char *path, int priority,
 	*thread_out = thrd;
 
 	return YAK_SUCCESS;
+
+Cleanup:
+	if (orig_map) {
+		vm_map_tmp_disable(orig_map);
+	}
+
+	if (vn) {
+		vnode_deref(vn);
+	}
+
+	if (thrd) {
+		kfree(thrd, sizeof(struct kthread));
+	}
+
+	if (argv_ptr) {
+		kfree(argv_ptr, sizeof(char *) * argc);
+	}
+
+	if (envp_ptr) {
+		kfree(envp_ptr, sizeof(char *) * envc);
+	}
+
+	if (stack_ptr) {
+		vm_kfree(stack_ptr, KSTACK_SIZE);
+	}
+
+	return rv;
 }

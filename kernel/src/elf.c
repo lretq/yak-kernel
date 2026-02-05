@@ -18,25 +18,30 @@
 #define PHDR_FLAG_WRITE (1 << 1) /* Writable segment */
 #define PHDR_FLAG_EXECUTE (1 << 0) /* Executable segment */
 
-status_t elf_load_path(char *path, struct kprocess *process,
+status_t elf_load_path(char *path, struct vm_map *map,
 		       struct load_info *loadinfo, uintptr_t base);
 
-status_t elf_load(struct vnode *vn, struct kprocess *process,
+status_t elf_load(struct vnode *vn, struct vm_map *map,
 		  struct load_info *loadinfo, uintptr_t base)
 {
+	if (vn->type != VREG)
+		return YAK_INVALID_ARGS;
+
 	Elf64_Ehdr ehdr;
 	size_t read = -1;
-	EXPECT(vfs_read(vn, 0, &ehdr, sizeof(Elf64_Ehdr), &read));
+	TRY(vfs_read(vn, 0, &ehdr, sizeof(Elf64_Ehdr), &read));
 
 	bool pie = (ehdr.e_type == ET_DYN);
 
 	Elf64_Phdr *phdrs = kmalloc(ehdr.e_phnum * ehdr.e_phentsize);
+	if (!phdrs) {
+		return YAK_OOM;
+	}
 	guard(autofree)(phdrs, ehdr.e_phnum * ehdr.e_phentsize);
 
 	for (size_t idx = 0; idx < ehdr.e_phnum; idx++) {
 		size_t phoff = ehdr.e_phoff + idx * ehdr.e_phentsize;
-		EXPECT(vfs_read(vn, phoff, &phdrs[idx], ehdr.e_phentsize,
-				&read));
+		TRY(vfs_read(vn, phoff, &phdrs[idx], ehdr.e_phentsize, &read));
 	}
 
 	vaddr_t min_va = UINTPTR_MAX;
@@ -60,10 +65,8 @@ status_t elf_load(struct vnode *vn, struct kprocess *process,
 
 	size_t reserved_size = max_va - min_va;
 
-	status_t res = vm_map_reserve(process->map, base, reserved_size,
-				      pie ? VM_MAP_FIXED | VM_MAP_OVERWRITE : 0,
-				      &base);
-	IF_ERR(res) return res;
+	TRY(vm_map_reserve(map, base, reserved_size,
+			   pie ? VM_MAP_FIXED | VM_MAP_OVERWRITE : 0, &base));
 
 	pr_extra_debug("reserve: %lx\n", base);
 
@@ -112,18 +115,17 @@ status_t elf_load(struct vnode *vn, struct kprocess *process,
 
 		vaddr_t out;
 
-		EXPECT(vfs_mmap(vn, process->map, backed_map_size,
-				phdr->p_offset - misalign, initial_prot,
-				VM_INHERIT_COPY, map_address,
-				VM_MAP_FIXED | VM_MAP_OVERWRITE, &out));
+		TRY(vfs_mmap(vn, map, backed_map_size,
+			     phdr->p_offset - misalign, initial_prot,
+			     VM_INHERIT_COPY, map_address,
+			     VM_MAP_FIXED | VM_MAP_OVERWRITE, &out));
 
 		if (total_map_size > backed_map_size) {
-			EXPECT(vm_map(process->map, NULL,
-				      total_map_size - backed_map_size, 0,
-				      initial_prot, VM_INHERIT_COPY,
-				      VM_CACHE_DEFAULT,
-				      map_address + backed_map_size,
-				      VM_MAP_FIXED | VM_MAP_OVERWRITE, &out));
+			TRY(vm_map(map, NULL, total_map_size - backed_map_size,
+				   0, initial_prot, VM_INHERIT_COPY,
+				   VM_CACHE_DEFAULT,
+				   map_address + backed_map_size,
+				   VM_MAP_FIXED | VM_MAP_OVERWRITE, &out));
 		}
 
 		// Clear the trailing area at the end of the backed mapping.
@@ -132,8 +134,8 @@ status_t elf_load(struct vnode *vn, struct kprocess *process,
 		       phdr->p_memsz - phdr->p_filesz);
 
 		if (initial_prot != prot)
-			vm_protect(process->map, map_address, total_map_size,
-				   prot, VM_MAP_SETMAXPROT);
+			TRY(vm_protect(map, map_address, total_map_size, prot,
+				       VM_MAP_SETMAXPROT));
 	}
 
 	loadinfo->prog_entry = ehdr.e_entry + load_bias;
@@ -150,20 +152,20 @@ status_t elf_load(struct vnode *vn, struct kprocess *process,
 		case PT_INTERP: {
 			size_t interp_len = phdr->p_filesz;
 			char *interp = kmalloc(interp_len);
+			guard(autofree)(interp, interp_len);
 
-			EXPECT(vfs_read(vn, phdr->p_offset, interp, interp_len,
-					&read));
+			TRY(vfs_read(vn, phdr->p_offset, interp, interp_len,
+				     &read));
 
 			pr_extra_debug("PT_INTERP: %s\n", interp);
 
 			struct load_info interpinfo;
-			EXPECT(elf_load_path(interp, process, &interpinfo,
-					     INTERP_BASE));
+			TRY(elf_load_path(interp, map, &interpinfo,
+					  INTERP_BASE));
 
 			loadinfo->base = interpinfo.base;
 			loadinfo->real_entry = interpinfo.prog_entry;
 
-			kfree(interp, interp_len);
 			break;
 		}
 		case PT_PHDR:
@@ -186,14 +188,10 @@ status_t elf_load(struct vnode *vn, struct kprocess *process,
 	return YAK_SUCCESS;
 }
 
-status_t elf_load_path(char *path, struct kprocess *process,
-		       struct load_info *info, uintptr_t base)
+status_t elf_load_path(char *path, struct vm_map *map, struct load_info *info,
+		       uintptr_t base)
 {
 	struct vnode *vn;
-	status_t status = vfs_open(path, NULL, 0, &vn);
-	IF_ERR(status)
-	{
-		return status;
-	}
-	return elf_load(vn, process, info, base);
+	TRY(vfs_open(path, NULL, 0, &vn));
+	return elf_load(vn, map, info, base);
 }

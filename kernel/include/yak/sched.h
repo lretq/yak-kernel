@@ -159,8 +159,9 @@ void sched_yield(struct kthread *current, struct cpu *cpu);
 
 void thread_unwait(struct kthread *thread, status_t status);
 
-status_t launch_elf(struct kprocess *proc, char *path, int priority,
-		    char **argv, char **envp, struct kthread **thread_out);
+status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
+		    int priority, char **argv, char **envp,
+		    struct kthread **thread_out);
 
 #ifdef __cplusplus
 }
