@@ -146,6 +146,7 @@ status_t tty_core_ioctl(struct tty *tty, unsigned long com, void *data,
 	}
 	case TIOCGPGRP:
 	case TIOCSPGRP:
+		pr_warn("impl: tty foreground pgrp\n");
 		return YAK_SUCCESS;
 	default:
 		return YAK_NOTTY;

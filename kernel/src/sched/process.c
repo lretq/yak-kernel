@@ -1,3 +1,4 @@
+#include <yak/file.h>
 #include <yak/vm/map.h>
 #include <yak/queue.h>
 #include <yak/semaphore.h>
@@ -5,6 +6,7 @@
 #include <yak/init.h>
 #include <yak/log.h>
 #include <yak/status.h>
+#include <yak/jobctl.h>
 #include <stdint.h>
 #include <string.h>
 #include <yak/process.h>
@@ -29,13 +31,13 @@ struct id_map pgid_table;
 // for now: hash(pid) = pid
 static hash_t hash_id(const void *key, [[maybe_unused]] const size_t key_len)
 {
-	return (pid_t)key;
+	return *(const pid_t *)key;
 }
 
 static bool eq_id(const void *a, const void *b,
 		  [[maybe_unused]] const size_t key_len)
 {
-	return (pid_t)a == (pid_t)b;
+	return *(const pid_t *)a == *(const pid_t *)b;
 }
 
 static void id_map_init(struct id_map *t)
@@ -186,8 +188,53 @@ void process_destroy(struct kprocess *process)
 
 	pr_warn("implement full process destruction!\n");
 
-	// biggest memory hog
+	// biggest memory hog; get rid of this first
 	vm_map_destroy(process->map);
+
+	ipl_t ipl = spinlock_lock(&process->jobctl_lock);
+	pgrp_remove(process);
+	session_remove(process);
+	spinlock_unlock(&process->jobctl_lock, ipl);
+
+	{
+		struct kprocess *init_process = lookup_pid(1);
+		assert(init_process);
+
+		guard(mutex)(&process->child_list_lock);
+		while (!LIST_EMPTY(&process->child_list)) {
+			struct kprocess *child =
+				LIST_FIRST(&process->child_list);
+			LIST_REMOVE(child, child_list_entry);
+
+			ipl_t ipl = spinlock_lock(&child->thread_list_lock);
+			__atomic_store_n(&child->ppid, 1, __ATOMIC_RELEASE);
+			child->parent_process = init_process;
+			spinlock_unlock(&child->thread_list_lock, ipl);
+
+			guard(mutex)(&init_process->child_list_lock);
+			LIST_INSERT_HEAD(&init_process->child_list, child,
+					 child_list_entry);
+		}
+	}
+
+	// Remove from pid->process map
+	id_map_remove(&pid_table, process->pid);
+
+	assert(LIST_EMPTY(&process->child_list));
+
+	{
+		guard(mutex)(&process->fd_mutex);
+		for (int i = 0; i < process->fd_cap; i++) {
+			struct fd *fd = process->fds[i];
+			if (fd != NULL) {
+				fd_close(process, i);
+			}
+		}
+		kfree(process->fds, process->fd_cap * sizeof(struct fd *));
+	}
+
+	vnode_deref(process->cwd);
+	process->cwd = NULL;
 }
 
 INIT_DEPS(proc);

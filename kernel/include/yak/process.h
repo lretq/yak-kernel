@@ -70,6 +70,7 @@ struct kprocess {
 
 	pid_t ppid;
 	// cached pointer
+	// protected by thread_list_lock
 	struct kprocess *parent_process;
 
 	struct kmutex child_list_lock;

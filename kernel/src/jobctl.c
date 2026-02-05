@@ -6,13 +6,36 @@
 #include <yak/refcount.h>
 #include <yak/process.h>
 
-static void session_cleanup(struct session *)
+// XXX: slabs
+static struct session *alloc_session()
 {
+	return kzalloc(sizeof(struct session));
+}
+
+static struct pgrp *alloc_pgrp()
+{
+	return kzalloc(sizeof(struct pgrp));
+}
+
+static void free_session(struct session *session)
+{
+	kfree(session, 0);
+}
+
+static void free_pgrp(struct pgrp *pgrp)
+{
+	kfree(pgrp, 0);
+}
+
+static void session_cleanup(struct session *session)
+{
+	free_session(session);
 	panic("session todo");
 }
 
-static void pgrp_cleanup(struct pgrp *)
+static void pgrp_cleanup(struct pgrp *pgrp)
 {
+	free_pgrp(pgrp);
 	panic("pgrp todo");
 }
 
@@ -97,7 +120,7 @@ struct pgrp *pgrp_create(struct session *session, struct kprocess *leader)
 {
 	assert(spinlock_held(&leader->jobctl_lock));
 
-	struct pgrp *pgrp = kzalloc(sizeof(struct pgrp));
+	struct pgrp *pgrp = alloc_pgrp();
 	if (!pgrp)
 		return NULL;
 
@@ -119,7 +142,7 @@ struct session *session_create(struct kprocess *leader)
 {
 	assert(spinlock_held(&leader->jobctl_lock));
 
-	struct session *session = kzalloc(sizeof(struct session));
+	struct session *session = alloc_session();
 	if (!session)
 		return NULL;
 

@@ -91,6 +91,7 @@ static void swtch(struct kthread *current, struct kthread *thread)
 	current->affinity_cpu = curcpu_ptr();
 
 	if (thread->vm_ctx != NULL) {
+		// Kernel processes can attach themselves to arbitrary map contexts
 		assert(thread->owner_process == &kproc0);
 		vm_map_activate(thread->vm_ctx);
 	} else if (thread->user_thread) {
@@ -444,6 +445,11 @@ void sched_exit_self()
 
 	struct kthread *thread = curthread();
 
+	// We need to get off the process's map before getting reaped!
+	// If our thread and process gets reaped (waitpid) then we cannot be on
+	// the process map anymore.
+	vm_map_tmp_switch(kmap());
+
 	//pr_debug("sched_exit_self: %p\n", thread);
 
 	spinlock_lock_noipl(&thread->thread_lock);
@@ -468,6 +474,11 @@ void idle_loop()
 	setipl(IPL_PASSIVE);
 	while (1) {
 		assert(curipl() == IPL_PASSIVE);
-		asm volatile("sti; hlt");
+#if defined __x86_64__
+		enable_interrupts();
+		asm volatile("hlt");
+#else
+#error "Unsupported architecture! Port idle_loop for your platform"
+#endif
 	}
 }

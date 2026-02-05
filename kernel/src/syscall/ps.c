@@ -15,7 +15,7 @@ DEFINE_SYSCALL(SYS_EXIT, exit, int rc)
 {
 	struct kprocess *proc = curproc();
 	process_set_exit_status(proc, EXIT_STATUS(rc));
-	pr_warn("sys_exit: we have to kill our sibling threads\n");
+	pr_warn("sys_exit: we have to kill our sibling threads (pid=%llu)\n", proc->pid);
 	sched_exit_self();
 }
 
@@ -28,7 +28,8 @@ DEFINE_SYSCALL(SYS_GETPID, getpid)
 DEFINE_SYSCALL(SYS_GETPPID, getppid)
 {
 	pr_debug("sys_getppid()\n");
-	return SYS_OK(curproc()->ppid);
+	pid_t ppid = __atomic_load_n(&curproc()->ppid, __ATOMIC_ACQUIRE);
+	return SYS_OK(ppid);
 }
 
 DEFINE_SYSCALL(SYS_SETSID, setsid)

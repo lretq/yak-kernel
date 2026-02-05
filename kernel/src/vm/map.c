@@ -661,16 +661,19 @@ void vm_map_activate(struct vm_map *map)
 	bitset_atomic_set(&map->pmap.mapped_on, cpu->cpu_id);
 }
 
-void vm_map_tmp_switch(struct vm_map *map)
+struct vm_map *vm_map_tmp_switch(struct vm_map *map)
 {
+	struct vm_map *orig = curcpu().current_map;
 	curthread()->vm_ctx = map;
 	vm_map_activate(map);
+	return orig;
 }
 
-void vm_map_tmp_disable()
+void vm_map_tmp_disable(struct vm_map *map)
 {
 	assert(curthread()->vm_ctx);
 	curthread()->vm_ctx = NULL;
+	vm_map_activate(map);
 }
 
 status_t vm_map_fork(struct vm_map *from, struct vm_map *to)
