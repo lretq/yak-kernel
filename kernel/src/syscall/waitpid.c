@@ -31,8 +31,6 @@ static void reap_zombie(struct kprocess *zombie, int *status)
 
 DEFINE_SYSCALL(SYS_WAITPID, waitpid, pid_t pid, int *status, int flags)
 {
-	pr_debug("sys_waitpid(%lld, %p, %d)\n", pid, status, flags);
-
 	if (flags & ~KNOWN_OPTIONS) {
 		pr_warn("sys_waitpid: unknown options\n");
 	}

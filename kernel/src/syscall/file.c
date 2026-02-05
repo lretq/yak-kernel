@@ -100,8 +100,6 @@ int dirfd_get(struct kprocess *proc, int dirfd, char *path, int flags,
 DEFINE_SYSCALL(SYS_FACCESSAT, faccessat, int dirfd, const char *user_path,
 	       int mode, int flags)
 {
-	pr_debug("faccessat(%d, %s, %d, %d)\n", dirfd, user_path, mode, flags);
-
 	struct kprocess *proc = curproc();
 
 	size_t path_len = 0;
@@ -145,8 +143,6 @@ DEFINE_SYSCALL(SYS_FACCESSAT, faccessat, int dirfd, const char *user_path,
 DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 	       struct stat *buf, int flags)
 {
-	pr_debug("fstatat(%d, %s, %p, %d)\n", dirfd, user_path, buf, flags);
-
 	struct kprocess *proc = curproc();
 	size_t path_len = 0;
 	char *path = NULL;
@@ -218,7 +214,6 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 	       mode_t mode)
 {
-	pr_debug("sys_openat(%d, %s, %d, %d)\n", dirfd, user_path, flags, mode);
 	struct kprocess *proc = curproc();
 
 	int file_flags = convert_accmode(flags);
@@ -281,7 +276,6 @@ DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 
 DEFINE_SYSCALL(SYS_CLOSE, close, int fd)
 {
-	pr_debug("sys_close(%d)\n", fd);
 	struct kprocess *proc = curproc();
 
 	kmutex_acquire(&proc->fd_mutex, TIMEOUT_INFINITE);
@@ -298,7 +292,6 @@ DEFINE_SYSCALL(SYS_CLOSE, close, int fd)
 
 DEFINE_SYSCALL(SYS_DUP, dup, int fd)
 {
-	pr_debug("sys_dup(%d)\n", fd);
 	struct kprocess *proc = curproc();
 	int newfd = -1;
 	status_t rv = fd_duplicate(proc, fd, &newfd, 0);
@@ -308,7 +301,6 @@ DEFINE_SYSCALL(SYS_DUP, dup, int fd)
 
 DEFINE_SYSCALL(SYS_DUP2, dup2, int oldfd, int newfd)
 {
-	pr_debug("sys_dup2(%d %d)\n", oldfd, newfd);
 	struct kprocess *proc = curproc();
 	status_t rv = fd_duplicate(proc, oldfd, &newfd, 0);
 	RET_ERRNO_ON_ERR(rv);
@@ -317,8 +309,6 @@ DEFINE_SYSCALL(SYS_DUP2, dup2, int oldfd, int newfd)
 
 DEFINE_SYSCALL(SYS_WRITE, write, int fd, const char *buf, size_t count)
 {
-	pr_debug("sys_write: %d %p %ld\n", fd, buf, count);
-
 	struct kprocess *proc = curproc();
 	struct file *file;
 
@@ -349,8 +339,6 @@ DEFINE_SYSCALL(SYS_WRITE, write, int fd, const char *buf, size_t count)
 
 DEFINE_SYSCALL(SYS_READ, read, int fd, char *buf, size_t count)
 {
-	pr_debug("sys_read: %d %p %ld\n", fd, buf, count);
-
 	struct kprocess *proc = curproc();
 
 	struct file *file = getfile_ref(proc, fd);
@@ -414,14 +402,9 @@ DEFINE_SYSCALL(SYS_FALLOCATE, fallocate, int fd, int mode, off_t offset,
 	struct kprocess *proc = curproc();
 	struct file *file;
 
-	{
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			return SYS_ERR(EBADF);
-		}
-		file = desc->file;
-		file_ref(file);
+	file = getfile_ref(proc, fd);
+	if (!file) {
+		return SYS_ERR(EBADF);
 	}
 
 	guard_ref_adopt(file, file);
@@ -437,8 +420,6 @@ DEFINE_SYSCALL(SYS_FALLOCATE, fallocate, int fd, int mode, off_t offset,
 
 DEFINE_SYSCALL(SYS_FCNTL, fcntl, int fd, int op, size_t arg)
 {
-	pr_debug("sys_fcntl(%d, %d, %ld)\n", fd, op, arg);
-
 	struct kprocess *proc = curproc();
 
 	status_t rv = YAK_INVALID_ARGS;
@@ -524,21 +505,12 @@ DEFINE_SYSCALL(SYS_FCNTL, fcntl, int fd, int op, size_t arg)
 
 DEFINE_SYSCALL(SYS_IOCTL, ioctl, int fd, unsigned long op, void *argp)
 {
-	pr_debug("sys_ioctl(%d, %lu, %p)\n", fd, op, argp);
-
 	struct kprocess *proc = curproc();
-	struct file *file;
 
-	{
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			return SYS_ERR(EBADF);
-		}
-		file = desc->file;
-		file_ref(file);
+	struct file *file = getfile_ref(proc, fd);
+	if (!file) {
+		return SYS_ERR(EBADF);
 	}
-
 	guard_ref_adopt(file, file);
 
 	if (file->vnode->type != VCHR && file->vnode->type != VBLK) {
@@ -554,18 +526,11 @@ DEFINE_SYSCALL(SYS_IOCTL, ioctl, int fd, unsigned long op, void *argp)
 DEFINE_SYSCALL(SYS_FCHDIR, fchdir, int fd)
 {
 	struct kprocess *proc = curproc();
-	struct file *file;
 
-	{
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			return SYS_ERR(EBADF);
-		}
-		file = desc->file;
-		file_ref(file);
+	struct file *file = getfile_ref(proc, fd);
+	if (!file) {
+		return SYS_ERR(EBADF);
 	}
-
 	guard_ref_adopt(file, file);
 
 	if (file->vnode->type != VDIR) {
@@ -580,8 +545,6 @@ DEFINE_SYSCALL(SYS_FCHDIR, fchdir, int fd)
 
 DEFINE_SYSCALL(SYS_CHDIR, chdir, const char *path)
 {
-	pr_debug("chdir(%s)\n", path);
-
 	struct kprocess *proc = curproc();
 
 	struct vnode *vn;
@@ -596,7 +559,6 @@ DEFINE_SYSCALL(SYS_CHDIR, chdir, const char *path)
 
 DEFINE_SYSCALL(SYS_GETDENTS, getdents, int fd, void *buffer, size_t max_size)
 {
-	pr_debug("getdents(%d, %p, %ld)\n", fd, buffer, max_size);
 	struct kprocess *proc = curproc();
 
 	struct file *file = getfile_ref(proc, fd);
@@ -623,7 +585,7 @@ DEFINE_SYSCALL(SYS_GETDENTS, getdents, int fd, void *buffer, size_t max_size)
 		VOP_GETDENTS(vn, buffer, max_size, &offset, &bytes_read));
 
 	file->offset = offset;
-	pr_debug("getdents: read %ld; new offset: %ld\n", bytes_read, offset);
+	//pr_debug("getdents: read %ld; new offset: %ld\n", bytes_read, offset);
 
 	return SYS_OK(bytes_read);
 }

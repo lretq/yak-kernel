@@ -84,12 +84,19 @@ struct cpu percpu_cpudata = {};
 
 extern char __init_stack_top[];
 
+void syscall_log(uintptr_t num, uintptr_t arg1, uintptr_t arg2,
+		 uintptr_t arg3, uintptr_t arg4, uintptr_t arg5,
+		 uintptr_t arg6);
+
 __no_san void plat_syscall_handler(struct syscall_frame *frame)
 {
 	if (frame->rax >= MAX_SYSCALLS) {
 		pr_error("request syscall >= MAX_SYSCALLS\n");
 		return;
 	}
+
+	syscall_log(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10,
+		    frame->r8, frame->r9);
 
 	struct syscall_result res = syscall_table[frame->rax](
 		frame, frame->rdi, frame->rsi, frame->rdx, frame->r10,
