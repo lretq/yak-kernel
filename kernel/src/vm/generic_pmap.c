@@ -41,15 +41,29 @@ static void pmap_free_table_level(pte_t *table, size_t lvl)
 			pte_t *child = (pte_t *)p2v(pa);
 			pmap_free_table_level(child, lvl - 1);
 			pmm_free(pa);
+		} else {
+			PTE_STORE(ptep, 0);
 		}
-
-		PTE_STORE(ptep, 0);
 	}
+}
+
+static bool is_pmap_mapped(struct pmap *pmap)
+{
+	for (size_t i = 0; i < elementsof(pmap->mapped_on.bits); i++) {
+		if (pmap->mapped_on.bits[i] != 0)
+			return true;
+	}
+
+	return false;
 }
 
 void pmap_destroy(struct pmap *pmap)
 {
 	assert(pmap->top_level != 0);
+	assert(pmap != &kmap()->pmap);
+	if (is_pmap_mapped(pmap)) {
+		panic("destroy pmap that is still mapped!\n");
+	}
 
 	pte_t *toplevel = (pte_t *)p2v(pmap->top_level);
 
