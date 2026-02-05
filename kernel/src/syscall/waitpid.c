@@ -1,6 +1,7 @@
 #include <yak/wait.h>
 #include <yak/types.h>
 #include <yak/queue.h>
+#include <yak/heap.h>
 #include <yak/process.h>
 #include <yak/log.h>
 #include <yak/syscall.h>
@@ -25,6 +26,7 @@ static void reap_zombie(struct kprocess *zombie, int *status)
 	LIST_REMOVE(zombie, child_list_entry);
 
 	process_destroy(zombie);
+	kfree(zombie, sizeof(struct kprocess));
 }
 
 DEFINE_SYSCALL(SYS_WAITPID, waitpid, pid_t pid, int *status, int flags)
@@ -59,9 +61,10 @@ DEFINE_SYSCALL(SYS_WAITPID, waitpid, pid_t pid, int *status, int flags)
 			ipl_t ipl = spinlock_lock(&child->thread_list_lock);
 			if (child->state == PROC_ZOMBIE) {
 				spinlock_unlock(&child->thread_list_lock, ipl);
+				pid_t child_pid = child->pid;
 				reap_zombie(child, status);
 				kmutex_release(&proc->child_list_lock);
-				return SYS_OK(child->pid);
+				return SYS_OK(child_pid);
 			}
 			spinlock_unlock(&child->thread_list_lock, ipl);
 		}
