@@ -87,7 +87,7 @@ status_t fd_alloc_at(struct kprocess *proc, int fd)
 	return YAK_SUCCESS;
 }
 
-status_t fd_alloc_nofile(struct kprocess *proc, int *fd)
+static status_t fd_alloc_nofile(struct kprocess *proc, int *fd)
 {
 	int alloc_fd;
 	while ((alloc_fd = fd_getnext(proc)) == -1) {
@@ -116,9 +116,9 @@ status_t fd_alloc(struct kprocess *proc, int *fd)
 
 	struct file *f = kzalloc(sizeof(struct file));
 	assert(f);
-	fdp->file = f;
-
 	file_init(f);
+
+	fdp->file = f;
 
 	return YAK_SUCCESS;
 }
@@ -181,7 +181,7 @@ status_t fd_duplicate(struct kprocess *proc, int oldfd, int *newfd, int flags)
 		dest_fd->flags |= FD_CLOEXEC;
 
 	dest_fd->file = src_fd->file;
-	file_ref(src_fd->file);
+	file_ref(dest_fd->file);
 
 	*newfd = alloc_fd;
 	return YAK_SUCCESS;
@@ -189,8 +189,13 @@ status_t fd_duplicate(struct kprocess *proc, int oldfd, int *newfd, int flags)
 
 void fd_close(struct kprocess *proc, int fd)
 {
+	// Upon entry fd mutex is locked
+
 	struct fd *desc = proc->fds[fd];
 	assert(desc);
+
+	proc->fds[fd] = NULL;
+
 	if (desc->file)
 		file_deref(desc->file);
 	kfree(desc, 0);

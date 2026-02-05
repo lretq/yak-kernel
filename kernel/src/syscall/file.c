@@ -290,14 +290,8 @@ DEFINE_SYSCALL(SYS_CLOSE, close, int fd)
 		kmutex_release(&proc->fd_mutex);
 		return SYS_ERR(EBADF);
 	}
-	proc->fds[fd] = NULL;
+	fd_close(proc, fd);
 	kmutex_release(&proc->fd_mutex);
-
-	struct file *file = desc->file;
-
-	kfree(desc, sizeof(struct fd));
-
-	file_deref(file);
 
 	return SYS_OK(0);
 }
