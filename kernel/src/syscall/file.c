@@ -247,7 +247,7 @@ DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 		if (flags & O_CREAT) {
 			struct vattr attr;
 			vattr_fill(proc, &attr, mode);
-			RET_ERRNO_ON_ERR(vfs_create(path, VREG, &attr, &vn));
+			res = vfs_create(path, VREG, &attr, &vn);
 		} else {
 			// file does not exist, we also dont want to create it
 			return SYS_ERR(ENOENT);
