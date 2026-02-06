@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 #include <yak/status.h>
 
@@ -21,3 +25,7 @@ void ringbuffer_destroy(struct ringbuffer *rb);
 size_t ringbuffer_put(struct ringbuffer *rb, const void *buf, size_t count);
 size_t ringbuffer_get(struct ringbuffer *rb, void *buf, size_t count);
 size_t ringbuffer_available(struct ringbuffer *rb);
+
+#ifdef __cplusplus
+}
+#endif
