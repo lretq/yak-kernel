@@ -100,7 +100,7 @@ static status_t fd_alloc_nofile(struct kprocess *proc, int *fd)
 
 	*fd = alloc_fd;
 
-	pr_debug("Alloc'd fd %d\n", *fd);
+	//pr_debug("Alloc'd fd %d\n", *fd);
 
 	return YAK_SUCCESS;
 }

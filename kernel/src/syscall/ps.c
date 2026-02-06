@@ -15,26 +15,24 @@ DEFINE_SYSCALL(SYS_EXIT, exit, int rc)
 {
 	struct kprocess *proc = curproc();
 	process_set_exit_status(proc, EXIT_STATUS(rc));
-	pr_warn("sys_exit: we have to kill our sibling threads (pid=%llu)\n", proc->pid);
+	pr_warn("sys_exit: we have to kill our sibling threads (pid=%llu)\n",
+		proc->pid);
 	sched_exit_self();
 }
 
 DEFINE_SYSCALL(SYS_GETPID, getpid)
 {
-	pr_debug("sys_getpid()\n");
 	return SYS_OK(curproc()->pid);
 }
 
 DEFINE_SYSCALL(SYS_GETPPID, getppid)
 {
-	pr_debug("sys_getppid()\n");
 	pid_t ppid = __atomic_load_n(&curproc()->ppid, __ATOMIC_ACQUIRE);
 	return SYS_OK(ppid);
 }
 
 DEFINE_SYSCALL(SYS_SETSID, setsid)
 {
-	pr_debug("sys_setsid()\n");
 	struct kprocess *proc = curproc();
 	status_t rv = jobctl_setsid(proc);
 	RET_ERRNO_ON_ERR(rv);
@@ -43,7 +41,6 @@ DEFINE_SYSCALL(SYS_SETSID, setsid)
 
 DEFINE_SYSCALL(SYS_SETPGID, setpgid, pid_t pid, pid_t pgid)
 {
-	pr_debug("sys_setpgid()\n");
 	if (pgid < 0) {
 		return SYS_ERR(EINVAL);
 	}
@@ -100,7 +97,6 @@ DEFINE_SYSCALL(SYS_GETSID, getsid, pid_t pid)
 DEFINE_SYSCALL(SYS_SLEEP, sleep, struct timespec *req, struct timespec *rem)
 {
 	nstime_t sleep_ns = STIME(req->tv_sec) + req->tv_nsec;
-	pr_extra_debug("sys_sleep() for %lx ns\n", sleep_ns);
 	nstime_t start = plat_getnanos();
 	ksleep(sleep_ns);
 	nstime_t time_passed = plat_getnanos() - start;

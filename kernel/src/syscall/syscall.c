@@ -29,13 +29,15 @@
 	X(SYS_FALLOCATE, sys_fallocate, "fd=%d mode=%d off=%ld size=%ld")    \
 	X(SYS_FCNTL, sys_fcntl, "fd=%d op=%d arg=%ld")                       \
 	X(SYS_IOCTL, sys_ioctl, "fd=%d op=%ld argp=%p")                      \
-	X(SYS_FSTATAT, sys_fstatat, "dirfd=%d path=%p buf=%p flags=%d")      \
+	X(SYS_FSTATAT, sys_fstatat, "dirfd=%d path=%s buf=%p flags=%d")      \
 	X(SYS_CHDIR, sys_chdir, "path=%p")                                   \
 	X(SYS_FCHDIR, sys_fchdir, "fd=%d")                                   \
 	X(SYS_GETDENTS, sys_getdents, "fd=%d buf=%p max=%ld")                \
 	X(SYS_FACCESSAT, sys_faccessat, "dirfd=%d path=%p mode=%d flags=%d") \
 	X(SYS_WAITPID, sys_waitpid, "pid=%lld status=%p flags=%d")           \
 	X(SYS_POLL, sys_poll, "fds=%p nfds=%ld tm=%p mask=%p")               \
+	X(SYS_READLINKAT, sys_readlinkat,                                    \
+	  "dirfd=%d path=%p buf=%p max_size=%ld")                            \
 	X(SYS_DEBUG_SLEEP, sys_debug_sleep, "duration=%ld ns")
 
 #define SYSCALL_LIST_NOLOG        \

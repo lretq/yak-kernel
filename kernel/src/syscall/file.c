@@ -122,22 +122,23 @@ DEFINE_SYSCALL(SYS_FACCESSAT, faccessat, int dirfd, const char *user_path,
 	guard_ref_adopt(from_node, vnode);
 
 	if (path == NULL) {
-		if (from_node != NULL)
+		if (from_node != NULL) {
 			return SYS_OK(0);
-	} else {
-		struct vnode *vn;
-		RET_ERRNO_ON_ERR(vfs_lookup_path(
-			path, from_node,
-			(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0,
-			&vn, NULL));
+		}
 
-		vnode_deref(vn);
-		kmutex_release(&vn->lock);
-
-		return SYS_OK(0);
+		return SYS_ERR(EACCES);
 	}
 
-	return SYS_ERR(EACCES);
+	struct vnode *vn;
+	RET_ERRNO_ON_ERR(vfs_lookup_path(
+		path, from_node,
+		(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0, &vn,
+		NULL));
+
+	VOP_UNLOCK(vn);
+	vnode_deref(vn);
+
+	return SYS_OK(0);
 }
 
 DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
@@ -155,6 +156,9 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 		}
 	}
 
+	// autofree actually checks for NULL!
+	guard(autofree)(path, path_len + 1);
+
 	struct vnode *from_node = NULL;
 	int dirfd_res = dirfd_get(proc, dirfd, path, flags, &from_node);
 	if (dirfd_res != 0) {
@@ -168,13 +172,15 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 	mode_t file_mode;
 
 	if (path == NULL) {
-		pr_debug("fstatat: lookup not needed\n");
-		VOP_GETATTR(from_node, &attr);
+		//pr_debug("fstatat: lookup not needed\n");
+		RET_ERRNO_ON_ERR(VOP_GETATTR(from_node, &attr));
 		filesize = from_node->filesize;
 		file_mode = vtype_to_mode(from_node->type);
 	} else {
+		/*
 		pr_debug("fstatat: %s, from_node: %p (is AT_FDCWD: %d)\n", path,
 			 from_node, dirfd == AT_FDCWD);
+		*/
 		struct vnode *vn;
 		RET_ERRNO_ON_ERR(vfs_lookup_path(
 			path, from_node,
@@ -185,8 +191,8 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 		filesize = vn->filesize;
 		file_mode = vtype_to_mode(vn->type);
 
+		VOP_UNLOCK(vn);
 		vnode_deref(vn);
-		kmutex_release(&vn->lock);
 	}
 
 	struct stat stat;
@@ -233,6 +239,8 @@ DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 	if (dirfd_res != 0) {
 		return SYS_ERR(dirfd_res);
 	}
+
+	guard_ref_adopt(from_node, vnode);
 
 	struct vnode *vn;
 	status_t res = vfs_open(path, from_node,
@@ -366,12 +374,18 @@ DEFINE_SYSCALL(SYS_SEEK, seek, int fd, off_t offset, int whence)
 	struct kprocess *proc = curproc();
 	guard(mutex)(&proc->fd_mutex);
 
-	struct fd *desc = proc->fds[fd];
+	struct fd *desc = fd_safe_get(proc, fd);
+
 	if (!desc) {
 		return SYS_ERR(EBADF);
 	}
 
 	struct file *file = desc->file;
+
+	enum vtype typ = file->vnode->type;
+	if (typ != VREG) {
+		return SYS_ERR(ESPIPE);
+	}
 
 	switch (whence) {
 	case SEEK_SET:
@@ -496,7 +510,7 @@ DEFINE_SYSCALL(SYS_FCNTL, fcntl, int fd, int op, size_t arg)
 	}
 	default:
 		pr_warn("unimplemented fcntl op: %d\n", op);
-		break;
+		return SYS_ERR(ENOTSUP);
 	}
 
 	RET_ERRNO_ON_ERR(rv);
@@ -588,4 +602,61 @@ DEFINE_SYSCALL(SYS_GETDENTS, getdents, int fd, void *buffer, size_t max_size)
 	//pr_debug("getdents: read %ld; new offset: %ld\n", bytes_read, offset);
 
 	return SYS_OK(bytes_read);
+}
+
+DEFINE_SYSCALL(SYS_READLINKAT, readlinkat, int dirfd, const char *user_path,
+	       void *buffer, size_t max_size)
+{
+	struct kprocess *proc = curproc();
+
+	size_t path_len = 0;
+	char *path = NULL;
+	if (user_path != NULL) {
+		path_len = strlen(user_path);
+		// we never need to check for "" now
+		if (path_len != 0) {
+			path = kmalloc(path_len + 1);
+			memcpy(path, user_path, path_len + 1);
+		}
+	}
+
+	struct vnode *from_node = NULL;
+	int dirfd_res = dirfd_get(proc, dirfd, path, AT_EMPTY_PATH, &from_node);
+	if (dirfd_res != 0) {
+		return SYS_ERR(dirfd_res);
+	}
+
+	guard_ref_adopt(from_node, vnode);
+
+	if (path == NULL) {
+		if (from_node == NULL)
+			return SYS_ERR(ENOENT);
+
+		if (from_node->type != VLNK)
+			return SYS_ERR(EINVAL);
+
+		char *link;
+		RET_ERRNO_ON_ERR(VOP_READLINK(from_node, &link));
+		guard(autofree)(link, 0);
+		memcpy(buffer, link, MIN(strlen(link), max_size));
+
+		return SYS_OK(0);
+	}
+
+	struct vnode *vn;
+	RET_ERRNO_ON_ERR(vfs_lookup_path(path, from_node, VFS_LOOKUP_NOFOLLOW,
+					 &vn, NULL));
+
+	char *link;
+	RET_ERRNO_ON_ERR(VOP_READLINK(vn, &link));
+	guard(autofree)(link, 0);
+	size_t copy_len = MIN(strlen(link), max_size);
+	memcpy(buffer, link, copy_len);
+
+	pr_debug("read link! %s\n", link);
+
+	VOP_UNLOCK(vn);
+	vnode_deref(vn);
+
+	return SYS_OK(copy_len);
 }

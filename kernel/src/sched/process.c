@@ -186,8 +186,6 @@ void process_destroy(struct kprocess *process)
 	if (process->pid == 0 || process->pid == 1)
 		panic("try to destroy init or kernel\n");
 
-	pr_warn("implement full process destruction!\n");
-
 	// biggest memory hog; get rid of this first
 	vm_map_destroy(process->map);
 

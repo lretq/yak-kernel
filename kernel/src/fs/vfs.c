@@ -484,7 +484,7 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 				goto skip_follow;
 			}
 
-			pr_debug("lookup link: %s\n", comp);
+			//pr_debug("lookup link: %s\n", comp);
 
 			char *dest;
 			status_t symresolve_retval = VOP_READLINK(next, &dest);
