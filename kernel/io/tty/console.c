@@ -6,13 +6,14 @@ void console_backend_write(const void *buf, size_t length);
 void console_backend_winsize(struct winsize *ws);
 
 struct tty *console_tty;
-static struct kmutex console_lock;
+static struct spinlock console_lock;
 
 static ssize_t console_write(struct tty *tty, const char *buf, size_t len)
 {
 	(void)tty;
-	guard(mutex)(&console_lock);
+	ipl_t ipl = spinlock_lock(&console_lock);
 	console_backend_write(buf, len);
+	spinlock_unlock(&console_lock, ipl);
 	return len;
 }
 
@@ -36,7 +37,7 @@ static struct tty_driver_ops console_ops = {
 
 void console_init()
 {
-	kmutex_init(&console_lock, "console");
+	spinlock_init(&console_lock);
 	console_backend_setup();
 	console_tty = tty_create("console", &console_ops, NULL);
 }

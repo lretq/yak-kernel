@@ -12,60 +12,96 @@
 
 #include <yak/log.h>
 
-static void receive_char(struct tty *tty, char c)
+static void commit_line(struct tty *tty)
+{
+	if (tty->canonical_pos == 0)
+		return;
+
+	ringbuffer_put(&tty->read_buf, tty->canonical_buf, tty->canonical_pos);
+
+	tty->canonical_pos = 0;
+
+	event_alarm(&tty->vnode->poll_event, true);
+	event_alarm(&tty->data_available, false);
+}
+
+static void do_echo(struct tty *tty, char c)
 {
 	struct termios *t = &tty->termios;
 
-	bool echo = (t->c_lflag & ECHO);
+	if (!(t->c_lflag & ECHO)) {
+		if (c == '\n' && (t->c_lflag & ECHONL)) {
+			tty->driver_ops->write(tty, &c, 1);
+		}
+		return;
+	}
+
+	tty->driver_ops->write(tty, &c, 1);
+}
+
+static void receive_char(struct tty *tty, char c)
+{
+	guard(mutex)(&tty->read_mutex);
+
+	struct termios *t = &tty->termios;
 
 	if (t->c_lflag & ICANON) {
+		// Backspace
 		if (c == t->c_cc[VERASE]) {
 			if (tty->canonical_pos > 0) {
 				tty->canonical_pos--;
-				if (echo)
+				if (t->c_lflag & ECHO)
 					tty->driver_ops->write(tty, "\b \b", 3);
 			}
 			return;
 		}
 
+		// Line Delete
 		if (c == t->c_cc[VKILL]) {
-			if (echo) {
-				while (tty->canonical_pos-- > 0)
+			if (t->c_lflag & ECHO) {
+				while (tty->canonical_pos > 0) {
+					tty->canonical_pos--;
 					tty->driver_ops->write(tty, "\b \b", 3);
+				}
+			} else {
+				tty->canonical_pos = 0;
 			}
-			tty->canonical_pos = 0;
+			return;
+		}
+
+		// EOF (ctrl+d)
+		if (c == t->c_cc[VEOF]) {
+			commit_line(tty);
 			return;
 		}
 
 		if (tty->canonical_pos < TTY_BUF_SIZE - 1) {
 			tty->canonical_buf[tty->canonical_pos++] = c;
-			if (echo)
-				tty->driver_ops->write(tty, &c, 1);
 		}
 
-		if (c == '\n' || c == t->c_cc[VEOF]) {
-			guard(mutex)(&tty->read_mutex);
-			ringbuffer_put(&tty->read_buf, tty->canonical_buf,
-				       tty->canonical_pos);
-			event_alarm(&tty->vnode->poll_event, true);
-			event_alarm(&tty->data_available, false);
+		do_echo(tty, c);
+
+		if (c == '\n') {
+			commit_line(tty);
 		}
 
 		return;
 	}
 
-	guard(mutex)(&tty->read_mutex);
+	// Non-canonical mode
 	ringbuffer_put(&tty->read_buf, &c, 1);
 	event_alarm(&tty->vnode->poll_event, true);
 	event_alarm(&tty->data_available, false);
 }
 
-static size_t check_line(struct ringbuffer *rb, struct termios *t)
+static size_t check_line(struct ringbuffer *rb)
 {
-	for (size_t i = 0; i < ringbuffer_available(rb); i++) {
-		size_t idx = (rb->tail + i) % rb->capacity;
-		char c = rb->data[idx];
-		if (c == '\n' || c == t->c_cc[VEOF])
+	size_t avail = ringbuffer_available(rb);
+
+	for (size_t i = 0; i < avail; i++) {
+		size_t buf_idx = (rb->tail + i) % rb->capacity;
+		char c = rb->data[buf_idx];
+		if (c == '\n')
 			return i + 1;
 	}
 	return 0;
@@ -75,14 +111,27 @@ static status_t read(struct tty *tty, char *buf, size_t len, size_t *read_bytes)
 {
 	struct termios *t = &tty->termios;
 
+	size_t got = 0;
+
 	kmutex_acquire(&tty->read_mutex, TIMEOUT_INFINITE);
 
 	if (t->c_lflag & ICANON) {
-		size_t n;
 		while (1) {
-			n = check_line(&tty->read_buf, t);
-			if (n > 0)
+			size_t n = check_line(&tty->read_buf);
+			if (n == 0 &&
+			    ringbuffer_available(&tty->read_buf) > 0) {
+				// a partial line exists
+				// (i.e. Ctrl+D)
+				n = ringbuffer_available(&tty->read_buf);
+			}
+
+			if (n > 0) {
+				got = ringbuffer_get(&tty->read_buf, buf,
+						     MIN(n, len));
 				break;
+			}
+
+			event_clear(&tty->data_available);
 
 			kmutex_release(&tty->read_mutex);
 
@@ -91,41 +140,59 @@ static status_t read(struct tty *tty, char *buf, size_t len, size_t *read_bytes)
 
 			kmutex_acquire(&tty->read_mutex, TIMEOUT_INFINITE);
 		}
-		*read_bytes = ringbuffer_get(&tty->read_buf, buf, MIN(n, len));
 	} else {
-		if (t->c_cc[VMIN] == 0 && t->c_cc[VTIME] == 0) {
-			*read_bytes = ringbuffer_get(&tty->read_buf, buf, len);
-		} else {
-			while (ringbuffer_available(&tty->read_buf) <
-			       t->c_cc[VMIN]) {
-				nstime_t tm = TIMEOUT_INFINITE;
+		cc_t vmin = t->c_cc[VMIN];
+		cc_t vtime = t->c_cc[VTIME];
 
-				if (t->c_cc[VTIME] > 0) {
-					tm = t->c_cc[VTIME] * 100000000L;
-				}
+		nstime_t timeout = TIMEOUT_INFINITE;
+		bool first_byte = true;
 
-				kmutex_release(&tty->read_mutex);
+		while (got == 0 || (vmin > 0 && got < vmin)) {
+			size_t avail = ringbuffer_available(&tty->read_buf);
+			if (avail > 0) {
+				size_t take = MIN(avail, len - got);
+				got += ringbuffer_get(&tty->read_buf, buf + got,
+						      take);
 
-				status_t res = sched_wait(&tty->data_available,
-							  WAIT_MODE_BLOCK, tm);
+				if (vmin == 0)
+					break;
 
-				if (IS_ERR(res)) {
-					return res;
-				}
-
-				kmutex_acquire(&tty->read_mutex,
-					       TIMEOUT_INFINITE);
+				first_byte = false;
+				continue;
 			}
+
+			if (vtime > 0) {
+				// vtime is measuerd in 0.1 second steps
+				// so convert to ns first
+				timeout = vtime * 100000000L;
+				if (!first_byte && vmin > 0)
+					timeout = vtime * 100000000L;
+			}
+
+			event_clear(&tty->data_available);
+			kmutex_release(&tty->read_mutex);
+
+			status_t res = sched_wait(&tty->data_available,
+						  WAIT_MODE_BLOCK, timeout);
+
+			kmutex_acquire(&tty->read_mutex, TIMEOUT_INFINITE);
+
+			if (IS_ERR(res)) {
+				break;
+			}
+
+			if (vtime > 0 && !first_byte &&
+			    ringbuffer_available(&tty->read_buf) == 0)
+				break;
 		}
-
-		*read_bytes = ringbuffer_get(&tty->read_buf, buf, len);
 	}
 
-	if (ringbuffer_available(&tty->read_buf) == 0) {
+	if (ringbuffer_available(&tty->read_buf) == 0)
 		event_clear(&tty->data_available);
-	}
 
 	kmutex_release(&tty->read_mutex);
+
+	*read_bytes = got;
 	return YAK_SUCCESS;
 }
 
@@ -135,13 +202,17 @@ static status_t write(struct tty *tty, const char *buf, size_t len,
 	struct termios *t = &tty->termios;
 	for (size_t i = 0; i < len; i++) {
 		char c = buf[i];
-		if (c == '\n') {
-			if (t->c_oflag & ONLCR)
-				tty->driver_ops->write(tty, "\r", 1);
-		} else if (c == '\r') {
-			if (t->c_oflag & OCRNL)
+
+		if (t->c_oflag & OPOST) {
+			if (c == '\n' && (t->c_oflag & ONLCR)) {
+				tty->driver_ops->write(tty, "\r\n", 2);
+				continue;
+			}
+			if (c == '\r' && (t->c_oflag & OCRNL)) {
 				c = '\n';
+			}
 		}
+
 		tty->driver_ops->write(tty, &c, 1);
 	}
 
@@ -183,8 +254,13 @@ static status_t poll(struct tty *tty, short mask, short *ret)
 
 	if (mask & POLLIN) {
 		guard(mutex)(&tty->read_mutex);
-		if (ringbuffer_available(&tty->read_buf)) {
-			*ret |= POLLIN;
+
+		if (tty->termios.c_lflag & ICANON) {
+			if (check_line(&tty->read_buf) > 0)
+				*ret |= POLLIN;
+		} else {
+			if (ringbuffer_available(&tty->read_buf) > 0)
+				*ret |= POLLIN;
 		}
 	}
 

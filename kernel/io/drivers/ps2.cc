@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <uacpi/resources.h>
 #include <yak/dpc.h>
+#include <yak/ringbuffer.h>
+#include <yak/spinlock.h>
 #include <yak/hint.h>
 #include <yak/irq.h>
 #include <yak/log.h>
@@ -17,7 +19,7 @@
 
 #include "../arch/x86_64/src/asm.h"
 
-#define RINGBUF_SIZE 128
+#define RINGBUF_SIZE 256
 
 extern "C" struct tty *console_tty;
 
@@ -94,9 +96,17 @@ class Ps2Kbd final : public Device {
 	{
 		bool extended = false;
 
-		while (tail != head) {
-			auto sc = buf[tail++];
-			tail %= RINGBUF_SIZE;
+		while (true) {
+			auto state = spinlock_lock_interrupts(&buf_lock);
+			if (!ringbuffer_available(&buf_)) {
+				spinlock_unlock_interrupts(&buf_lock, state);
+				break;
+			}
+
+			uint8_t sc;
+			ringbuffer_get(&buf_, &sc, 1);
+
+			spinlock_unlock_interrupts(&buf_lock, state);
 
 			if (sc == 0x2a || sc == 0xaa || sc == 0x36 ||
 			    sc == 0xb6) {
@@ -188,8 +198,9 @@ class Ps2Kbd final : public Device {
 					tty_input(console_tty, 0x1B); // ESC
 				}
 
-				if (c != '\0')
+				if (c != '\0') {
 					tty_input(console_tty, c);
+				}
 			}
 		}
 	}
@@ -208,15 +219,17 @@ class Ps2Kbd final : public Device {
 			return IRQ_NACK;
 		}
 
+		spinlock_lock_noipl(&kbd->buf_lock);
 		while (inb(kbd->cmd_port_) & 0x1) {
 			auto sc = inb(kbd->data_port_);
-			if ((kbd->head + 1) % RINGBUF_SIZE == kbd->tail) {
+
+			if (0 == ringbuffer_put(&kbd->buf_, &sc, 1)) {
+				spinlock_unlock_noipl(&kbd->buf_lock);
 				pr_warn("dropping scancode\n");
 				return IRQ_ACK;
 			}
-			kbd->buf[kbd->head++] = sc;
-			kbd->head %= RINGBUF_SIZE;
 		}
+		spinlock_unlock_noipl(&kbd->buf_lock);
 
 		dpc_enqueue(&kbd->dpc_, arg);
 
@@ -233,6 +246,9 @@ class Ps2Kbd final : public Device {
 		auto node = acpidev->node_;
 
 		dpc_init(&dpc_, dpc_handler);
+
+		spinlock_init(&buf_lock);
+		ringbuffer_init(&buf_, RINGBUF_SIZE);
 
 		uacpi_resources *kb_res;
 		uacpi_status ret = uacpi_get_current_resources(node, &kb_res);
@@ -272,9 +288,8 @@ class Ps2Kbd final : public Device {
 	uint16_t data_port_ = -1;
 	uint16_t cmd_port_ = -1;
 
-	uint16_t head = 0;
-	uint16_t tail = 0;
-	uint8_t buf[RINGBUF_SIZE];
+	struct spinlock buf_lock;
+	struct ringbuffer buf_;
 
 	bool ctrl = false;
 	bool alt = false;
