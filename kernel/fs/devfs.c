@@ -225,6 +225,11 @@ static status_t devfs_poll(struct vnode *vn, short events, short *revents)
 	return node->dev_ops->dev_poll(node->minor, events, revents);
 }
 
+static status_t devfs_getattr(struct vnode *vn, struct vattr *buf)
+{
+	return YAK_SUCCESS;
+}
+
 static struct vn_ops devfs_vn_op = {
 	.vn_lookup = devfs_lookup,
 	.vn_create = devfs_create,
@@ -239,6 +244,7 @@ static struct vn_ops devfs_vn_op = {
 	.vn_open = devfs_open,
 	.vn_ioctl = devfs_ioctl,
 	.vn_poll = devfs_poll,
+	.vn_getattr = devfs_getattr,
 };
 
 static status_t devfs_mount(struct vnode *vn);
