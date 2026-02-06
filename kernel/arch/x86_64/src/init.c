@@ -54,6 +54,7 @@ static inline void serial_flush()
 size_t serial_write([[maybe_unused]] struct console *console, const char *str,
 		    size_t len)
 {
+	//return len;
 	int state = disable_interrupts();
 	for (size_t i = 0; i < len; i++) {
 		serial_buf[serial_pos++] = str[i];
@@ -94,12 +95,18 @@ __no_san void plat_syscall_handler(struct syscall_frame *frame)
 		return;
 	}
 
+#if 1
 	syscall_log(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10,
 		    frame->r8, frame->r9);
+#endif
 
 	struct syscall_result res = syscall_table[frame->rax](
 		frame, frame->rdi, frame->rsi, frame->rdx, frame->r10,
 		frame->r8, frame->r9);
+	if (res.err != 0) {
+		pr_debug("syscall error: %ld (with error %ld)\n", frame->rax,
+			 res.err);
+	}
 	frame->rax = res.retval;
 	frame->rdx = res.err;
 }
