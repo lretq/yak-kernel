@@ -157,7 +157,15 @@ static status_t tmpfs_readlink(struct vnode *vn, char **path)
 	if (vn->type != VLNK || path == NULL)
 		return YAK_INVALID_ARGS;
 
-	*path = strdup(((struct tmpfs_node *)vn)->link_path);
+	struct tmpfs_node *tmpfs_node = (struct tmpfs_node *)vn;
+
+	char *link_copy = kmalloc(strlen(tmpfs_node->link_path) + 1);
+	if (!link_copy) {
+		return YAK_OOM;
+	}
+
+	strcpy(link_copy, tmpfs_node->link_path);
+	*path = link_copy;
 
 	return YAK_SUCCESS;
 }
