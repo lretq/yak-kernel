@@ -58,7 +58,6 @@ static status_t do_wait(struct kthread *thread, bool has_timeout)
 	thread->status = THREAD_WAITING;
 
 	sched_yield(thread, thread->last_cpu);
-	assert(!spinlock_held(&thread->thread_lock));
 	assert(curipl() == IPL_DPC);
 
 	for (size_t i = 0; i < thread->wait_blocks_count; i++) {

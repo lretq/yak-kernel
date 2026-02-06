@@ -54,7 +54,7 @@ status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
 
 	struct kthread *thrd = kzalloc(sizeof *thrd);
 	if (!thrd) {
-		goto Cleanup;
+		goto ErrCleanup;
 	}
 
 	// Don't init thread yet. Defer joining the process thread list until we are set up.
@@ -74,21 +74,21 @@ status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
 	// Again, make sure all the allocations can be filled
 	char **argv_ptr = kzalloc(argc * sizeof(char *));
 	if (!argv_ptr) {
-		goto Cleanup;
+		goto ErrCleanup;
 	}
 
 	char **envp_ptr = kzalloc(envc * sizeof(char *));
 	if (!envp_ptr) {
-		goto Cleanup;
+		goto ErrCleanup;
 	}
 
 	// Allocate kernel stack
-	void *stack_ptr = vm_kalloc(KSTACK_SIZE, 0);
-	if (!stack_ptr) {
-		goto Cleanup;
+	void *kernel_stack_ptr = vm_kalloc(KSTACK_SIZE, 0);
+	if (!kernel_stack_ptr) {
+		goto ErrCleanup;
 	}
 
-	vaddr_t stack_addr = (vaddr_t)stack_ptr;
+	vaddr_t stack_addr = (vaddr_t)kernel_stack_ptr;
 	stack_addr += KSTACK_SIZE;
 
 	// Make sure we're in the right vm context
@@ -99,7 +99,7 @@ status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
 	rv = elf_load(vn, map, &info, 0);
 	if (IS_ERR(rv)) {
 		// If this fails, the caller has to clean up or destroy the map!
-		goto Cleanup;
+		goto ErrCleanup;
 	}
 
 	// Allocate the user stack afterwards, the ELF may be static and not relocatable
@@ -108,7 +108,8 @@ status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
 		    VM_INHERIT_COPY, VM_CACHE_DEFAULT, USER_STACK_BASE, 0,
 		    &user_stack_addr);
 	if (IS_ERR(rv)) {
-		goto Cleanup;
+		// Same as an elf load failure!
+		goto ErrCleanup;
 	}
 	user_stack_addr += USER_STACK_LENGTH;
 	assert((user_stack_addr & 15) == 0);
@@ -175,8 +176,8 @@ status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
 
 	pr_extra_debug("argc at %p\n", sp);
 
-	vm_map_tmp_disable(orig_map);
-
+	// Errors are impossible now.
+	// We can safely add our newly created thread to the process' list!
 	kthread_init(thrd, argv_strings[0], priority, proc, true);
 	thrd->kstack_top = (void *)stack_addr;
 
@@ -186,7 +187,16 @@ status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
 
 	*thread_out = thrd;
 
-	return YAK_SUCCESS;
+	goto Cleanup;
+
+ErrCleanup:
+	if (thrd) {
+		kfree(thrd, sizeof(struct kthread));
+	}
+
+	if (kernel_stack_ptr) {
+		vm_kfree(kernel_stack_ptr, KSTACK_SIZE);
+	}
 
 Cleanup:
 	if (orig_map) {
@@ -197,20 +207,12 @@ Cleanup:
 		vnode_deref(vn);
 	}
 
-	if (thrd) {
-		kfree(thrd, sizeof(struct kthread));
-	}
-
 	if (argv_ptr) {
 		kfree(argv_ptr, sizeof(char *) * argc);
 	}
 
 	if (envp_ptr) {
 		kfree(envp_ptr, sizeof(char *) * envc);
-	}
-
-	if (stack_ptr) {
-		vm_kfree(stack_ptr, KSTACK_SIZE);
 	}
 
 	return rv;
