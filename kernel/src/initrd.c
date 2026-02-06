@@ -17,11 +17,14 @@ INIT_STAGE(user);
 
 enum [[gnu::packed]] tar_file_type {
 	TAR_REG = '0',
-	TAR_HARD,
-	TAR_SYM,
-	TAR_CHR,
-	TAR_BLK,
-	TAR_DIR,
+	TAR_AREG = '\0',
+	TAR_LNK = '1',
+	TAR_SYM = '2',
+	TAR_CHR = '3',
+	TAR_BLK = '4',
+	TAR_DIR = '5',
+	TAR_FIFO = '6',
+	TAR_CONT = '7',
 };
 
 struct [[gnu::packed]] tar_header {
@@ -34,7 +37,7 @@ struct [[gnu::packed]] tar_header {
 	char mtime[12];
 	// not octal:
 	uint64_t chksum;
-	enum tar_file_type filetype;
+	uint8_t filetype;
 	char linkname[100];
 	char magic[6]; /* ustar then \0 */
 	uint16_t ustar_version;
@@ -70,6 +73,26 @@ static uint64_t decode_octal(char *data, size_t size)
 	return sum;
 }
 
+#define PATH_MAX 4096
+
+static char hardlink_copy_buffer[1024 * 16];
+static char pathbuf[PATH_MAX];
+static char pathbuf2[PATH_MAX];
+
+static char long_name[PATH_MAX] = { 0 };
+static char long_linkname[PATH_MAX] = { 0 };
+static bool have_long_name = false;
+static bool have_long_linkname = false;
+
+bool is_zero_block(const void *p)
+{
+	const unsigned char *b = p;
+	for (int i = 0; i < 512; i++)
+		if (b[i] != 0)
+			return false;
+	return true;
+}
+
 void initrd_unpack_tar(const char *path, const char *data, size_t len)
 {
 	pr_debug("begin unpack ...\n");
@@ -78,7 +101,7 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 
 	size_t pos = 0;
 
-	char pathbuf[4096];
+	bool hard_warned = false;
 
 	while (pos <= len) {
 		if (zero_filled >= 2)
@@ -87,17 +110,28 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 		struct tar_header *hdr = (struct tar_header *)(data + pos);
 		pos += sizeof(struct tar_header);
 
-		if (memcmp(hdr->magic, "ustar", 6) == 0) {
-			panic("bad tar magic\n");
-		}
-
-		if (hdr->filetype == 0) {
+		if (is_zero_block(hdr)) {
 			zero_filled++;
 			continue;
 		}
 
+		char *filename = hdr->filename;
+		char *nameprefix = hdr->filename_prefix;
+		char *linkname = hdr->linkname;
+
+		if (have_long_name) {
+			filename = long_name;
+			nameprefix = "";
+			have_long_name = false;
+		}
+
+		if (have_long_linkname) {
+			linkname = long_linkname;
+			have_long_linkname = false;
+		}
+
 		npf_snprintf(pathbuf, sizeof(pathbuf), "%s/%s%s", path,
-			     hdr->filename_prefix, hdr->filename);
+			     nameprefix, filename);
 
 		zero_filled = 0;
 
@@ -111,11 +145,81 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 		attr.atime = attr.mtime;
 
 		switch (hdr->filetype) {
+		case 'L': { // GNU long filename
+			size_t size = HDR_OFLD(filesize);
+
+			if (size >= sizeof(long_name))
+				panic("tar long filename too long\n");
+
+			memcpy(long_name, data + pos, size);
+			long_name[size - 1] =
+				'\0'; // tar guarantees NUL, but be safe
+
+			pos += ALIGN_UP(size, 512);
+
+			have_long_name = true;
+			break;
+		}
+		case 'K': { // GNU long linkname
+			size_t size = HDR_OFLD(filesize);
+
+			if (size >= sizeof(long_linkname))
+				panic("tar long linkname too long\n");
+
+			memcpy(long_linkname, data + pos, size);
+			long_linkname[size - 1] = '\0';
+
+			pos += ALIGN_UP(size, 512);
+
+			have_long_linkname = true;
+			break;
+		}
+		case TAR_LNK: {
+			if (!hard_warned) {
+				pr_warn("yak does not support hard links yet! %s -> %s\n",
+					pathbuf, hdr->linkname);
+				hard_warned = true;
+			}
+
+			EXPECT(vfs_create(pathbuf, VREG, &attr, &vn));
+
+			npf_snprintf(pathbuf2, sizeof(pathbuf2), "%s/%s", path,
+				     linkname);
+
+			struct vnode *src_vn;
+			EXPECT(vfs_open(pathbuf2, NULL, 0, &src_vn));
+			guard_ref_adopt(src_vn, vnode);
+
+			size_t offset = 0;
+			size_t remaining = src_vn->filesize;
+
+			while (remaining > 0) {
+				size_t to_copy =
+					(remaining >
+					 sizeof(hardlink_copy_buffer)) ?
+						sizeof(hardlink_copy_buffer) :
+						remaining;
+				size_t delta;
+
+				EXPECT(vfs_read(src_vn, offset,
+						hardlink_copy_buffer, to_copy,
+						&delta));
+				EXPECT(vfs_write(vn, offset,
+						 hardlink_copy_buffer, to_copy,
+						 &delta));
+
+				offset += to_copy;
+				remaining -= to_copy;
+			}
+
+			break;
+		}
 		case TAR_SYM:
 			//pr_debug("create sym %s -> %s\n", pathbuf, hdr->linkname);
-			vfs_symlink(pathbuf, hdr->linkname, &attr, &vn);
+			EXPECT(vfs_symlink(pathbuf, linkname, &attr, &vn));
 			break;
 
+		case TAR_AREG:
 		case TAR_REG:
 			//pr_debug("create file %s\n", pathbuf);
 			EXPECT(vfs_create(pathbuf, VREG, &attr, &vn));
@@ -135,6 +239,8 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 			break;
 
 		default:
+			pr_warn("unhandled TAR type: %c! File: %s\n",
+				hdr->filetype, pathbuf);
 			break;
 		}
 	}
