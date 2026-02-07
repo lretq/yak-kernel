@@ -157,6 +157,9 @@ size_t n_shootdowns = 0;
 static void do_tlb_shootdown(struct pmap *pmap, vaddr_t va, size_t length,
 			     size_t level)
 {
+	if (cpus_online() == 1)
+		return;
+
 	__atomic_fetch_add(&n_shootdowns, 1, __ATOMIC_RELAXED);
 
 	struct shootdown_context ctx;
