@@ -113,7 +113,7 @@ DEFINE_SYSCALL(SYS_MMAP, mmap, void *hint, unsigned long len,
 
 		guard_ref_adopt(file, file);
 
-		rv = vfs_mmap(file->vnode, proc->map, len, pgoff, vm_prot,
+		rv = VOP_MMAP(file->vnode, proc->map, len, pgoff, vm_prot,
 			      inheritance, (vaddr_t)hint, vmflags, &out);
 	}
 

@@ -29,7 +29,7 @@ status_t elf_load(struct vnode *vn, struct vm_map *map,
 
 	Elf64_Ehdr ehdr;
 	size_t read = -1;
-	TRY(vfs_read(vn, 0, &ehdr, sizeof(Elf64_Ehdr), &read));
+	TRY(VOP_READ(vn, 0, &ehdr, sizeof(Elf64_Ehdr), &read));
 
 	bool pie = (ehdr.e_type == ET_DYN);
 
@@ -41,7 +41,7 @@ status_t elf_load(struct vnode *vn, struct vm_map *map,
 
 	for (size_t idx = 0; idx < ehdr.e_phnum; idx++) {
 		size_t phoff = ehdr.e_phoff + idx * ehdr.e_phentsize;
-		TRY(vfs_read(vn, phoff, &phdrs[idx], ehdr.e_phentsize, &read));
+		TRY(VOP_READ(vn, phoff, &phdrs[idx], ehdr.e_phentsize, &read));
 	}
 
 	vaddr_t min_va = UINTPTR_MAX;
@@ -115,7 +115,7 @@ status_t elf_load(struct vnode *vn, struct vm_map *map,
 
 		vaddr_t out;
 
-		TRY(vfs_mmap(vn, map, backed_map_size,
+		TRY(VOP_MMAP(vn, map, backed_map_size,
 			     phdr->p_offset - misalign, initial_prot,
 			     VM_INHERIT_COPY, map_address,
 			     VM_MAP_FIXED | VM_MAP_OVERWRITE, &out));
@@ -154,7 +154,7 @@ status_t elf_load(struct vnode *vn, struct vm_map *map,
 			char *interp = kmalloc(interp_len);
 			guard(autofree)(interp, interp_len);
 
-			TRY(vfs_read(vn, phdr->p_offset, interp, interp_len,
+			TRY(VOP_READ(vn, phdr->p_offset, interp, interp_len,
 				     &read));
 
 			pr_extra_debug("PT_INTERP: %s\n", interp);

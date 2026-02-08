@@ -10,6 +10,8 @@
 	X(SYS_CLOSE, sys_close, "fd=%d")                                     \
 	X(SYS_READ, sys_read, "fd=%d buf=%p count=%ld")                      \
 	X(SYS_WRITE, sys_write, "fd=%d buf=%p count=%ld")                    \
+	X(SYS_PREAD, sys_pread, "fd=%d buf=%p count=%ld off=%ld")            \
+	X(SYS_PWRITE, sys_pwrite, "fd=%d buf=%p count=%ld off=%ld")          \
 	X(SYS_DUP, sys_dup, "fd=%d")                                         \
 	X(SYS_DUP2, sys_dup2, "oldfd=%d newfd=%d")                           \
 	X(SYS_SEEK, sys_seek, "fd=%d off=%ld whence=%d")                     \
@@ -38,6 +40,9 @@
 	X(SYS_POLL, sys_poll, "fds=%p nfds=%ld tm=%p mask=%p")               \
 	X(SYS_READLINKAT, sys_readlinkat,                                    \
 	  "dirfd=%d path=%p buf=%p max_size=%ld")                            \
+	X(SYS_SYMLINKAT, sys_symlinkat, "dirfd=%d target=%p link=%p")        \
+	X(SYS_LINKAT, sys_linkat,                                            \
+	  "olddirfd=%d oldpath=%p newdirfd=%d newpath=%p flags=%d")          \
 	X(SYS_DEBUG_SLEEP, sys_debug_sleep, "duration=%ld ns")
 
 #define SYSCALL_LIST_NOLOG        \

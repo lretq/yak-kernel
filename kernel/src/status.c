@@ -22,7 +22,9 @@ static const char *status_names[] = { "success",
 				      "too many files",
 				      "permission denied",
 				      "bad file",
-				      "no tty" };
+				      "no tty",
+				      "cross device",
+				      "is a directory" };
 
 const char *status_str(status_t status)
 {
@@ -72,6 +74,10 @@ int status_errno(status_t status)
 		return EBADF;
 	case YAK_NOTTY:
 		return ENOTTY;
+	case YAK_CROSS_DEVICE:
+		return EXDEV;
+	case YAK_ISDIR:
+		return EISDIR;
 	case YAK_EOF:
 		return 0; // may be wrong?
 	default:

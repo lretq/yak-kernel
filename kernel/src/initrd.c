@@ -182,6 +182,7 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 			}
 
 			EXPECT(vfs_create(pathbuf, VREG, &attr, &vn));
+			vnode_deref(vn);
 
 			npf_snprintf(pathbuf2, sizeof(pathbuf2), "%s/%s", path,
 				     linkname);
@@ -201,10 +202,10 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 						remaining;
 				size_t delta;
 
-				EXPECT(vfs_read(src_vn, offset,
+				EXPECT(VOP_READ(src_vn, offset,
 						hardlink_copy_buffer, to_copy,
 						&delta));
-				EXPECT(vfs_write(vn, offset,
+				EXPECT(VOP_WRITE(vn, offset,
 						 hardlink_copy_buffer, to_copy,
 						 &delta));
 
@@ -216,7 +217,9 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 		}
 		case TAR_SYM:
 			//pr_debug("create sym %s -> %s\n", pathbuf, hdr->linkname);
-			EXPECT(vfs_symlink(pathbuf, linkname, &attr, &vn));
+			EXPECT(vfs_symlink(pathbuf, linkname, &attr, NULL,
+					   &vn));
+			vnode_deref(vn);
 			break;
 
 		case TAR_AREG:
@@ -227,7 +230,9 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 			size_t size = HDR_OFLD(filesize);
 
 			size_t written = -1;
-			EXPECT(vfs_write(vn, 0, (data + pos), size, &written));
+			EXPECT(VOP_WRITE(vn, 0, (data + pos), size, &written));
+
+			vnode_deref(vn);
 
 			pos += ALIGN_UP(size, 512);
 			break;
@@ -235,6 +240,7 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 		case TAR_DIR:
 			//pr_debug("create dir %s\n", pathbuf);
 			EXPECT(vfs_create(pathbuf, VDIR, &attr, &vn));
+			vnode_deref(vn);
 
 			break;
 

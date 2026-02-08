@@ -133,30 +133,29 @@ status_t vfs_create(char *path, enum vtype type, struct vattr *attr,
 }
 
 status_t vfs_symlink(char *link_path, char *dest_path, struct vattr *attr,
-		     struct vnode **out)
+		     struct vnode *cwd, struct vnode **out)
 {
 	char *last_comp;
 	struct vnode *parent, *vn;
-	status_t rv = vfs_lookup_path(link_path, NULL, VFS_LOOKUP_PARENT,
-				      &parent, &last_comp);
-	IF_ERR(rv)
-	{
-		return rv;
-	}
+	TRY(vfs_lookup_path(link_path, cwd, VFS_LOOKUP_PARENT, &parent,
+			    &last_comp));
 
 	size_t comp_size = strlen(last_comp) + 1;
 
+	guard(autofree)(last_comp, comp_size);
+
 	assert(parent);
-	rv = VOP_SYMLINK(parent, last_comp, dest_path, attr, &vn);
+	status_t rv = VOP_SYMLINK(parent, last_comp, dest_path, attr, &vn);
 
 	VOP_UNLOCK(parent);
 	vnode_deref(parent);
 
-	if (out && IS_OK(rv)) {
-		*out = vn;
+	if (IS_OK(rv)) {
+		if (out)
+			*out = vn;
+		else
+			vnode_deref(vn);
 	}
-
-	kfree(last_comp, comp_size);
 
 	return rv;
 }
@@ -211,133 +210,14 @@ static size_t split_path(char *path)
 	return count;
 }
 
-status_t vfs_write(struct vnode *vp, voff_t offset, const void *buf,
-		   size_t length, size_t *writtenp)
-{
-	if (writtenp == NULL || vp->type == VDIR)
-		return YAK_INVALID_ARGS;
-
-	if (vp->ops->vn_write) {
-		return vp->ops->vn_write(vp, offset, buf, length, writtenp);
-	}
-
-	struct vm_object *vobj = vp->vobj;
-	assert(vobj);
-
-	if (length == 0)
-		return YAK_SUCCESS;
-
-	size_t written = 0;
-
-	size_t start_off = offset;
-	size_t end_off = offset + length;
-
-	VOP_LOCK(vp);
-	if (end_off > vp->filesize) {
-		vp->filesize = end_off;
-	}
-	VOP_UNLOCK(vp);
-
-	const char *src = buf;
-
-	while (start_off < end_off) {
-		voff_t pageoff = ALIGN_DOWN(start_off, PAGE_SIZE);
-		size_t page_offset = start_off - pageoff;
-		size_t chunk =
-			MIN(PAGE_SIZE - page_offset, end_off - start_off);
-
-		struct page *pg;
-		// Lookup or allocate the page
-		// XXX: should this wire pages?
-		status_t res = vm_lookuppage(vobj, pageoff, 0, &pg);
-		IF_ERR(res)
-		{
-			return res;
-		}
-
-		memcpy((char *)page_to_mapped_addr(pg) + page_offset, src,
-		       chunk);
-
-		// TODO: mark page as dirt?
-		// later, pager shall write it back
-
-		src += chunk;
-		start_off += chunk;
-		written += chunk;
-	}
-
-	*writtenp = written;
-	return YAK_SUCCESS;
-}
-
-status_t vfs_read(struct vnode *vn, voff_t offset, void *buf, size_t length,
-		  size_t *readp)
-{
-	if (readp == NULL || vn->type == VDIR)
-		return YAK_INVALID_ARGS;
-
-	if (vn->ops->vn_read) {
-		return vn->ops->vn_read(vn, offset, buf, length, readp);
-	}
-
-	struct vm_object *obj = vn->vobj;
-	assert(obj);
-
-	if (length == 0)
-		return YAK_SUCCESS;
-
-	if (offset >= vn->filesize) {
-		*readp = 0;
-		return YAK_EOF;
-	}
-
-	if (offset + length > vn->filesize)
-		length = vn->filesize - offset;
-
-	size_t read = 0;
-	char *dst = buf;
-
-	voff_t start_off = offset;
-	voff_t end_off = offset + length;
-
-	while (start_off < end_off) {
-		voff_t pageoff = ALIGN_DOWN(start_off, PAGE_SIZE);
-		size_t page_offset = start_off - pageoff;
-		size_t chunk =
-			MIN(PAGE_SIZE - page_offset, end_off - start_off);
-
-		struct page *pg;
-		// Lookup or retrieve the page
-		status_t res = vm_lookuppage(obj, pageoff, 0, &pg);
-		if (IS_ERR(res)) {
-			return res;
-		}
-
-		memcpy(dst, (char *)page_to_mapped_addr(pg) + page_offset,
-		       chunk);
-
-		dst += chunk;
-		start_off += chunk;
-		read += chunk;
-	}
-
-	*readp = read;
-	return YAK_SUCCESS;
-}
-
 status_t vfs_open(char *path, struct vnode *cwd, int lookup_flags,
 		  struct vnode **out)
 {
 	struct vnode *vn;
-	status_t res = vfs_lookup_path(path, cwd, lookup_flags, &vn, NULL);
-	IF_ERR(res)
-	{
-		return res;
-	}
+	TRY(vfs_lookup_path(path, cwd, lookup_flags, &vn, NULL));
 
-	res = VOP_OPEN(&vn);
-	IF_ERR(res)
-	{
+	status_t res = VOP_OPEN(&vn);
+	if (IS_ERR(res)) {
 		VOP_UNLOCK(vn);
 		vnode_deref(vn);
 		return res;
@@ -359,7 +239,9 @@ struct vnode *vfs_getroot()
 	return vn;
 }
 
+// cwd is expected to be referenced if non-null
 // vnodes are returned referenced+locked
+// => caller must call VOP_UNLOCK and vnode_deref
 status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			 struct vnode **out, char **last_comp)
 {
@@ -372,12 +254,17 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 
 	// don't resolve cwd, because we don't want
 	// to access a newly mounted filesystem
+	// XXX: wtf do you mean access a newly mounted filesystem?
 	struct vnode *current = cwd;
 	if (path_[0] == '/') {
 		current = vfs_getroot();
+
+		if (cwd != NULL) {
+			vnode_deref(cwd);
+		}
 	} else if (cwd == NULL) {
 		current = process_getcwd(curproc());
-	}
+	} /* else cwd was passed in referenced */
 
 	assert(current);
 
@@ -406,10 +293,17 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			assert(current->type == VDIR);
 			return YAK_SUCCESS;
 		} else if (path_[0] == '.') {
+			// WTF
+			if (current->type != VDIR) {
+				VOP_UNLOCK(current);
+				vnode_deref(current);
+				*out = NULL;
+				return YAK_NODIR;
+			}
+
 			if (last_comp)
 				*last_comp = strndup(".", 2);
 			*out = current;
-			assert(current->type == VDIR);
 			return YAK_SUCCESS;
 		}
 	}
@@ -520,7 +414,9 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 
 skip_follow:
 
-		vnode_deref(current);
+		if (current != next) {
+			vnode_deref(current);
+		}
 
 advance:
 		current = next;
@@ -548,82 +444,6 @@ advance:
 	return YAK_NOENT;
 }
 
-status_t vfs_ioctl(struct vnode *vn, unsigned long com, void *data, int *ret)
-{
-	if (!vn->ops->vn_ioctl)
-		return YAK_NOT_SUPPORTED;
-
-	return VOP_IOCTL(vn, com, data, ret);
-}
-
-status_t vfs_mmap(struct vnode *vn, struct vm_map *map, size_t length,
-		  voff_t offset, vm_prot_t prot, vm_inheritance_t inheritance,
-		  vaddr_t hint, int flags, vaddr_t *out)
-{
-	if (!vn->ops->vn_mmap)
-		return YAK_NOT_SUPPORTED;
-
-	if (vn->type != VREG)
-		return YAK_NODEV;
-
-	return VOP_MMAP(vn, map, length, offset, prot, inheritance, hint, flags,
-			out);
-}
-
-#define MAX_PATH 1024
-#define BUF_SIZE 8192
-
-#include <nanoprintf.h>
-
-void vfs_dump_rec(struct vnode *vn, const char *prefix)
-{
-	char buf[BUF_SIZE];
-	size_t bytes_read;
-
-	if (!vn || !vn->ops->vn_getdents) {
-		pr_error("vnode does not have getdents\n");
-		return;
-	}
-
-	size_t off = 0;
-	status_t res = VOP_GETDENTS(vn, (struct dirent *)buf, sizeof(buf), &off,
-				    &bytes_read);
-	if (res != YAK_SUCCESS) {
-		pr_error("%s<failed to read dir>\n", prefix);
-		return;
-	}
-
-	size_t offset = 0;
-	while (offset < bytes_read) {
-		struct dirent *d = (struct dirent *)(buf + offset);
-		offset += d->d_reclen;
-
-		// Skip "." and ".."
-		if (strcmp(d->d_name, ".") == 0 || strcmp(d->d_name, "..") == 0)
-			continue;
-
-		// Print entry
-		printk(0, "%s  %s%s\n", prefix, d->d_name,
-		       (d->d_type == DT_DIR) ? "/" : "");
-
-		// Recurse if directory
-		if (d->d_type == DT_DIR) {
-			char new_prefix[128];
-			npf_snprintf(new_prefix, sizeof(new_prefix), "%s  ",
-				     prefix);
-			struct vnode *child;
-			VOP_LOOKUP(vn, d->d_name, &child);
-			vfs_dump_rec(child, new_prefix);
-		}
-	}
-}
-
-void vfs_dump(const char *path)
-{
-	printk(0, "%s\n", path);
-	vfs_dump_rec(VFS_GETROOT(root_node->mounted_vfs), "");
-}
-
 void vnode_init(struct vnode *vn, struct vfs *vfs, struct vn_ops *ops,
 		enum vtype type)
 {
@@ -639,3 +459,18 @@ void vnode_init(struct vnode *vn, struct vfs *vfs, struct vn_ops *ops,
 	kmutex_init(&vn->lock, "vnode");
 	event_init(&vn->poll_event, false, 0);
 }
+
+#define INHERIT(field)                                   \
+	do {                                             \
+		if ((dest)->field == NULL)               \
+			(dest)->field = (source)->field; \
+	} while (0)
+
+void vfs_inherit_vn_ops(struct vn_ops *dest, const struct vn_ops *source)
+{
+#define X(op) INHERIT(op);
+	VN_OP_XLIST(X)
+#undef X
+}
+
+#undef INHERIT

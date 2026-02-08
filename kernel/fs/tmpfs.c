@@ -1,6 +1,8 @@
 #define pr_fmt(fmt) "tmpfs: " fmt
 
 #include <assert.h>
+#include <string.h>
+#include <stddef.h>
 #include <yak/heap.h>
 #include <yak/queue.h>
 #include <yak/timer.h>
@@ -15,8 +17,7 @@
 #include <yak/types.h>
 #include <yak/init.h>
 #include <yak/log.h>
-#include <string.h>
-#include <stddef.h>
+#include <yak-abi/poll.h>
 
 struct tmpfs_node {
 	struct vnode vnode;
@@ -37,6 +38,22 @@ struct tmpfs {
 	size_t seq_ino;
 };
 
+#define TO_TMP(vn_ptr)                                                       \
+	({                                                                   \
+		_Static_assert(__builtin_types_compatible_p(typeof(vn_ptr),  \
+							    struct vnode *), \
+			       "TO_TMP: argument must be a struct vnode *"); \
+		(struct tmpfs_node *)(vn_ptr);                               \
+	})
+
+#define TO_TMPFS(vfs_ptr)                                                    \
+	({                                                                   \
+		_Static_assert(__builtin_types_compatible_p(typeof(vfs_ptr), \
+							    struct vfs *),   \
+			       "TO_TMP: argument must be a struct vnode *"); \
+		(struct tmpfs *)(vfs_ptr);                                   \
+	})
+
 static struct tmpfs_node *create_node(struct vfs *vfs, enum vtype type);
 
 static struct vnode *tmpfs_getroot(struct vfs *vfs)
@@ -47,14 +64,14 @@ static struct vnode *tmpfs_getroot(struct vfs *vfs)
 
 static status_t tmpfs_inactive(struct vnode *vn)
 {
-	// TODO:free node
+	// TODO:free node when nlinks=0
 	return YAK_SUCCESS;
 }
 
 static status_t tmpfs_setattr(struct vnode *vn, unsigned int what,
 			      struct vattr *attr)
 {
-	struct tmpfs_node *tvn = (struct tmpfs_node *)vn;
+	struct tmpfs_node *tvn = TO_TMP(vn);
 	struct vattr *t_atr = &tvn->vattr;
 	if (what & SETATTR_ATIME)
 		t_atr->atime = attr->atime;
@@ -76,34 +93,33 @@ static status_t tmpfs_setattr(struct vnode *vn, unsigned int what,
 
 static status_t tmpfs_getattr(struct vnode *vn, struct vattr *attr)
 {
-	struct tmpfs_node *tvn = (struct tmpfs_node *)vn;
+	struct tmpfs_node *tvn = TO_TMP(vn);
 	memcpy(attr, &tvn->vattr, sizeof(struct vattr));
-
-	attr->block_count = ALIGN_UP(vn->filesize, PAGE_SIZE) / 512;
-
+	attr->block_count = DIV_ROUNDUP(vn->filesize, 512);
 	return YAK_SUCCESS;
 }
 
 static status_t tmpfs_create(struct vnode *parent, enum vtype type, char *name,
 			     struct vattr *initial_attr, struct vnode **out)
 {
-	struct tmpfs_node *parent_node = (struct tmpfs_node *)parent;
+	struct tmpfs_node *parent_node = TO_TMP(parent);
 
-	struct tmpfs_node *n;
+	vnode_ref(parent);
+
+	struct tmpfs_node *n = NULL;
 
 	size_t name_len = strlen(name);
 
 	if ((n = ht_get(&parent_node->children, name, name_len)) != NULL) {
 		pr_debug("exists already: %s (parent: %s, n: %s)\n", name,
 			 parent_node->name, n->name);
+		vnode_deref(parent);
 		return YAK_EXISTS;
 	}
 
 	struct tmpfs_node *node = create_node(parent->vfs, type);
-	if (type == VREG) {
-		assert(node->vnode.vobj != NULL);
-	}
 	if (!node) {
+		vnode_deref(parent);
 		return YAK_OOM;
 	}
 
@@ -113,19 +129,13 @@ static status_t tmpfs_create(struct vnode *parent, enum vtype type, char *name,
 	node->vattr.nlinks = (type == VDIR) ? 2 : 1;
 	tmpfs_setattr(&node->vnode, SETATTR_ALL, initial_attr);
 
-	status_t ret;
-	IF_ERR((ret = ht_set(&parent_node->children, name, name_len, node, 0)))
-	{
-		return ret;
-	};
+	EXPECT(ht_set(&parent_node->children, name, name_len, node, 0));
 
 	if (type == VDIR) {
 		// XXX: but muh errors :(
 		EXPECT(ht_set(&node->children, "..", 2, parent_node, 1));
 		parent_node->vattr.nlinks++;
 	}
-
-	vnode_ref(parent);
 
 	*out = &node->vnode;
 	return YAK_SUCCESS;
@@ -136,18 +146,44 @@ static status_t tmpfs_symlink(struct vnode *parent, char *name, char *path,
 {
 	char *path_copy = strdup(path);
 
-	struct vnode *linkvn;
+	struct vnode *linkvn = NULL;
 	status_t rv = tmpfs_create(parent, VLNK, name, attr, &linkvn);
-	IF_ERR(rv)
-	{
+	if (IS_ERR(rv)) {
 		kfree(path_copy, 0);
 		return rv;
 	}
 
-	struct tmpfs_node *tmpfs_node = (struct tmpfs_node *)linkvn;
+	struct tmpfs_node *tmpfs_node = TO_TMP(linkvn);
 	tmpfs_node->link_path = path_copy;
 
 	*out = linkvn;
+	return YAK_SUCCESS;
+}
+
+static status_t tmpfs_link(struct vnode *node, struct vnode *dir,
+			   const char *name)
+{
+	if (node->vfs != dir->vfs)
+		return YAK_CROSS_DEVICE;
+
+	if (dir->type != VDIR)
+		return YAK_NODIR;
+
+	if (node->type == VDIR)
+		return YAK_ISDIR;
+
+	struct tmpfs_node *tnode = TO_TMP(node);
+	struct tmpfs_node *tdir = TO_TMP(dir);
+
+	size_t namelen = strlen(name);
+
+	if (ht_get(&tdir->children, name, namelen))
+		return YAK_EXISTS;
+
+	TRY(ht_set(&tdir->children, name, namelen, node, true));
+
+	vnode_ref(node);
+	tnode->vattr.nlinks++;
 
 	return YAK_SUCCESS;
 }
@@ -157,7 +193,7 @@ static status_t tmpfs_readlink(struct vnode *vn, char **path)
 	if (vn->type != VLNK || path == NULL)
 		return YAK_INVALID_ARGS;
 
-	struct tmpfs_node *tmpfs_node = (struct tmpfs_node *)vn;
+	struct tmpfs_node *tmpfs_node = TO_TMP(vn);
 
 	char *link_copy = kmalloc(strlen(tmpfs_node->link_path) + 1);
 	if (!link_copy) {
@@ -170,53 +206,52 @@ static status_t tmpfs_readlink(struct vnode *vn, char **path)
 	return YAK_SUCCESS;
 }
 
-static status_t tmpfs_getdents(struct vnode *vn, struct dirent *buf,
-			       size_t bufsize, size_t *offset,
-			       size_t *bytes_read)
+static status_t tmpfs_getdirents(struct vnode *vn, struct dirent *buf,
+				 size_t bufsize, size_t *offset,
+				 size_t *bytes_read)
 {
 	if (vn->type != VDIR) {
 		return YAK_NODIR;
 	}
 
-	struct tmpfs_node *tvn = (struct tmpfs_node *)vn;
+	struct tmpfs_node *tvn = TO_TMP(vn);
 
-	char *outp = (char *)buf;
-	size_t remaining = bufsize;
-	size_t curr = 0;
-	size_t read = 0;
+	size_t curr_index = 0;
+	size_t total_read = 0;
 
 	struct ht_entry *elm;
 	HASHTABLE_FOR_EACH(&tvn->children, elm)
 	{
-		if (*offset > curr++) {
+		if (*offset > curr_index) {
+			curr_index++;
 			continue;
 		}
 
 		struct tmpfs_node *child = elm->value;
 		const char *name = elm->key;
-		size_t namelen = elm->key_len + 1;
-		size_t reclen = offsetof(struct dirent, d_name) + namelen;
+		const size_t namelen = elm->key_len;
+		size_t reclen = offsetof(struct dirent, d_name) + namelen + 1;
 		reclen = ALIGN_UP(reclen, sizeof(long));
 
-		if (reclen > remaining) {
+		if (total_read + reclen > bufsize) {
+			// Doesn't fit anymore!
 			break;
 		}
 
-		struct dirent *d = (struct dirent *)outp;
+		struct dirent *d = (struct dirent *)((char *)buf + total_read);
 		d->d_ino = child->vattr.inode;
 		d->d_off = 0; // ?
 		d->d_reclen = (unsigned short)reclen;
 		d->d_type = vtype_to_dtype(child->vnode.type);
-		memcpy(d->d_name, name, elm->key_len);
-		d->d_name[elm->key_len] = '\0';
+		memcpy(d->d_name, name, namelen);
+		d->d_name[namelen] = '\0';
 
-		outp += reclen;
-		remaining -= reclen;
-		read += reclen;
+		total_read += reclen;
+		curr_index++;
 	}
 
-	*bytes_read = read;
-	*offset = curr;
+	*bytes_read = total_read;
+	*offset = curr_index;
 
 	return YAK_SUCCESS;
 }
@@ -227,29 +262,12 @@ static status_t tmpfs_lookup(struct vnode *vn, char *name, struct vnode **out)
 		return YAK_NODIR;
 	}
 
-	struct tmpfs_node *elm = ht_get(&((struct tmpfs_node *)vn)->children,
-					name, strlen(name));
-	if (!elm)
+	struct tmpfs_node *tvn = TO_TMP(vn);
+	struct tmpfs_node *entry = ht_get(&tvn->children, name, strlen(name));
+	if (!entry)
 		return YAK_NOENT;
 
-	*out = &elm->vnode;
-	return YAK_SUCCESS;
-}
-
-static status_t tmpfs_lock(struct vnode *vn)
-{
-	kmutex_acquire(&vn->lock, TIMEOUT_INFINITE);
-	return YAK_SUCCESS;
-}
-
-static status_t tmpfs_unlock(struct vnode *vn)
-{
-	kmutex_release(&vn->lock);
-	return YAK_SUCCESS;
-}
-
-static status_t tmpfs_open(struct vnode **vn)
-{
+	*out = &entry->vnode;
 	return YAK_SUCCESS;
 }
 
@@ -258,8 +276,8 @@ static status_t tmpfs_mmap(struct vnode *vn, struct vm_map *map, size_t length,
 			   vm_inheritance_t inheritance, vaddr_t hint,
 			   int flags, vaddr_t *out)
 {
-	struct tmpfs_node *tvn = (struct tmpfs_node *)vn;
-	assert(tvn->vnode.type == VREG);
+	if (vn->type != VREG)
+		return YAK_NOT_SUPPORTED;
 	return vm_map(map, vn->vobj, length, offset, prot, inheritance,
 		      VM_CACHE_DEFAULT, hint, flags, out);
 }
@@ -273,26 +291,37 @@ static status_t tmpfs_fallocate(struct vnode *vn, int mode, off_t offset,
 			vn->filesize = offset + size;
 		return YAK_SUCCESS;
 	default:
+		pr_warn("unsupported fallocate mode: %d\n", mode);
 		return YAK_NOT_SUPPORTED;
 	}
+}
+
+static status_t tmpfs_poll(struct vnode *vn, short mask, short *ret)
+{
+	(void)vn;
+	if (mask & POLLOUT)
+		*ret |= POLLOUT;
+	if (mask & POLLIN)
+		*ret |= POLLIN;
+	return YAK_SUCCESS;
 }
 
 static struct vn_ops tmpfs_vn_op = {
 	.vn_lookup = tmpfs_lookup,
 	.vn_create = tmpfs_create,
-	.vn_lock = tmpfs_lock,
-	.vn_unlock = tmpfs_unlock,
-	.vn_inactive = tmpfs_inactive,
-	.vn_getdents = tmpfs_getdents,
 	.vn_symlink = tmpfs_symlink,
+	.vn_link = tmpfs_link,
+	.vn_inactive = tmpfs_inactive,
+	.vn_getdirents = tmpfs_getdirents,
 	.vn_readlink = tmpfs_readlink,
-	.vn_read = NULL,
-	.vn_write = NULL,
-	.vn_open = tmpfs_open,
 	.vn_mmap = tmpfs_mmap,
 	.vn_fallocate = tmpfs_fallocate,
-	.vn_setattr = tmpfs_setattr,
 	.vn_getattr = tmpfs_getattr,
+	.vn_setattr = tmpfs_setattr,
+	.vn_poll = tmpfs_poll,
+
+	.vn_read = vfs_vobj_read,
+	.vn_write = vfs_vobj_write,
 };
 
 static status_t tmpfs_mount(struct vnode *vn);
@@ -304,6 +333,7 @@ static struct vfs_ops tmpfs_op = {
 
 void tmpfs_init()
 {
+	vfs_inherit_vn_ops(&tmpfs_vn_op, &vfs_generic_ops);
 	EXPECT(vfs_register("tmpfs", &tmpfs_op));
 }
 
@@ -352,8 +382,8 @@ static struct tmpfs_node *create_node(struct vfs *vfs, enum vtype type)
 	node->name = NULL;
 	node->name_len = 0;
 
-	node->vattr.inode = __atomic_fetch_add(&((struct tmpfs *)vfs)->seq_ino,
-					       1, __ATOMIC_RELAXED);
+	node->vattr.inode = __atomic_fetch_add(&TO_TMPFS(vfs)->seq_ino, 1,
+					       __ATOMIC_RELAXED);
 	// XXX: get major/minor from vfs instance
 	node->vattr.major = 0;
 	node->vattr.minor = 0;
