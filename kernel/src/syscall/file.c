@@ -833,5 +833,88 @@ DEFINE_SYSCALL(SYS_SYMLINKAT, symlinkat, int dirfd,
 DEFINE_SYSCALL(SYS_LINKAT, linkat, int olddirfd, const char *user_old_path,
 	       int newdirfd, const char *user_new_path, int flags)
 {
-	return SYS_ERR(ENOTSUP);
+	struct kprocess *proc = curproc();
+
+	size_t old_len;
+	char *old_path = copy_user_path(user_old_path, &old_len);
+	guard(autofree)(old_path, old_len + 1);
+
+	if (old_path == NULL)
+		return SYS_ERR(ENOENT);
+
+	size_t new_len;
+	char *new_path = copy_user_path(user_new_path, &new_len);
+	guard(autofree)(new_path, new_len + 1);
+
+	if (new_path == NULL)
+		return SYS_ERR(ENOENT);
+
+	struct dirfd_result old_res;
+	int err = dirfd_get(proc, olddirfd, old_path, 0, &old_res);
+	if (err != 0)
+		return SYS_ERR(err);
+
+	struct vnode *old_cwd;
+
+	switch (old_res.kind) {
+	case DIRFD_ROOT:
+		old_cwd = NULL;
+		break;
+
+	case DIRFD_BASE_DIR:
+		old_cwd = old_res.vnode;
+		break;
+
+	case DIRFD_VNODE:
+		vnode_deref(old_res.vnode);
+		return SYS_ERR(ENOTDIR);
+	}
+
+	struct vnode *old_vn;
+	RET_ERRNO_ON_ERR(vfs_lookup_path(
+		old_path, old_cwd,
+		(flags & AT_SYMLINK_NOFOLLOW) ? VFS_LOOKUP_NOFOLLOW : 0,
+		&old_vn, NULL));
+
+	// Disallow hardlink to a directory
+	if (old_vn->type == VDIR) {
+		VOP_UNLOCK(old_vn);
+		vnode_deref(old_vn);
+		return SYS_ERR(EPERM);
+	}
+
+	struct dirfd_result new_res;
+	err = dirfd_get(proc, newdirfd, new_path, 0, &new_res);
+	if (err != 0) {
+		VOP_UNLOCK(old_vn);
+		vnode_deref(old_vn);
+		return SYS_ERR(err);
+	}
+
+	struct vnode *new_cwd;
+
+	switch (new_res.kind) {
+	case DIRFD_ROOT:
+		new_cwd = NULL;
+		break;
+
+	case DIRFD_BASE_DIR:
+		new_cwd = new_res.vnode;
+		break;
+
+	case DIRFD_VNODE:
+		vnode_deref(new_res.vnode);
+		VOP_UNLOCK(old_vn);
+		vnode_deref(old_vn);
+		return SYS_ERR(ENOTDIR);
+	}
+
+	status_t rv = vfs_link(old_vn, new_path, new_cwd);
+
+	VOP_UNLOCK(old_vn);
+	vnode_deref(old_vn);
+
+	RET_ERRNO_ON_ERR(rv);
+
+	return SYS_OK(0);
 }

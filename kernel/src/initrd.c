@@ -75,7 +75,6 @@ static uint64_t decode_octal(char *data, size_t size)
 
 #define PATH_MAX 4096
 
-static char hardlink_copy_buffer[1024 * 16];
 static char pathbuf[PATH_MAX];
 static char pathbuf2[PATH_MAX];
 
@@ -93,6 +92,33 @@ bool is_zero_block(const void *p)
 	return true;
 }
 
+static char hardlink_copy_buffer[1024 * 16];
+
+static void hardlink_copy(struct vattr *attr, char *path, struct vnode *src_vn)
+{
+	struct vnode *vn;
+	EXPECT(vfs_create(path, VREG, attr, &vn));
+	guard_ref_adopt(vn, vnode);
+
+	size_t offset = 0;
+	size_t remaining = src_vn->filesize;
+
+	while (remaining > 0) {
+		size_t to_copy = (remaining > sizeof(hardlink_copy_buffer)) ?
+					 sizeof(hardlink_copy_buffer) :
+					 remaining;
+		size_t delta;
+
+		EXPECT(VOP_READ(src_vn, offset, hardlink_copy_buffer, to_copy,
+				&delta));
+		EXPECT(VOP_WRITE(vn, offset, hardlink_copy_buffer, to_copy,
+				 &delta));
+
+		offset += to_copy;
+		remaining -= to_copy;
+	}
+}
+
 void initrd_unpack_tar(const char *path, const char *data, size_t len)
 {
 	pr_debug("begin unpack ...\n");
@@ -100,8 +126,6 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 	size_t zero_filled = 0;
 
 	size_t pos = 0;
-
-	bool hard_warned = false;
 
 	while (pos <= len) {
 		if (zero_filled >= 2)
@@ -175,15 +199,6 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 			break;
 		}
 		case TAR_LNK: {
-			if (!hard_warned) {
-				pr_warn("yak does not support hard links yet! %s -> %s\n",
-					pathbuf, hdr->linkname);
-				hard_warned = true;
-			}
-
-			EXPECT(vfs_create(pathbuf, VREG, &attr, &vn));
-			vnode_deref(vn);
-
 			npf_snprintf(pathbuf2, sizeof(pathbuf2), "%s/%s", path,
 				     linkname);
 
@@ -191,28 +206,13 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 			EXPECT(vfs_open(pathbuf2, NULL, 0, &src_vn));
 			guard_ref_adopt(src_vn, vnode);
 
-			size_t offset = 0;
-			size_t remaining = src_vn->filesize;
-
-			while (remaining > 0) {
-				size_t to_copy =
-					(remaining >
-					 sizeof(hardlink_copy_buffer)) ?
-						sizeof(hardlink_copy_buffer) :
-						remaining;
-				size_t delta;
-
-				EXPECT(VOP_READ(src_vn, offset,
-						hardlink_copy_buffer, to_copy,
-						&delta));
-				EXPECT(VOP_WRITE(vn, offset,
-						 hardlink_copy_buffer, to_copy,
-						 &delta));
-
-				offset += to_copy;
-				remaining -= to_copy;
+			status_t rv = vfs_link(src_vn, pathbuf, NULL);
+			if (rv == YAK_NOT_SUPPORTED) {
+				pr_warn("fall back to copying for hardlinks\n");
+				hardlink_copy(&attr, pathbuf, src_vn);
+			} else {
+				EXPECT(rv);
 			}
-
 			break;
 		}
 		case TAR_SYM:

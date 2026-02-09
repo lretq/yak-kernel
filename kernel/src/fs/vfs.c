@@ -132,6 +132,24 @@ status_t vfs_create(char *path, enum vtype type, struct vattr *attr,
 	return res;
 }
 
+status_t vfs_link(struct vnode *old_vn, char *new_path, struct vnode *new_cwd)
+{
+	char *last_comp;
+	struct vnode *parent;
+	TRY(vfs_lookup_path(new_path, new_cwd, VFS_LOOKUP_PARENT, &parent,
+			    &last_comp));
+
+	size_t comp_size = strlen(last_comp) + 1;
+	guard(autofree)(last_comp, comp_size);
+
+	status_t rv = VOP_LINK(old_vn, parent, last_comp);
+
+	VOP_UNLOCK(parent);
+	vnode_deref(parent);
+
+	return rv;
+}
+
 status_t vfs_symlink(char *link_path, char *dest_path, struct vattr *attr,
 		     struct vnode *cwd, struct vnode **out)
 {

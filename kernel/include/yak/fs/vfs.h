@@ -303,6 +303,8 @@ status_t vfs_symlink(char *link_path, char *dest_path,
 		     struct vattr *initial_attr, struct vnode *cwd,
 		     struct vnode **out);
 
+status_t vfs_link(struct vnode *old_vn, char *new_path, struct vnode *new_cwd);
+
 status_t vfs_vobj_write(struct vnode *vn, voff_t offset, const void *buf,
 			size_t count, size_t *writtenp);
 
