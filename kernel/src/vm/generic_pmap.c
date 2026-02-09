@@ -121,6 +121,13 @@ static inline void pmap_invalidate(vaddr_t va)
 	asm volatile("invlpg (%0)" ::"r"(va) : "memory");
 }
 
+static inline void pmap_flush_tlb()
+{
+	uint64_t pml4;
+	asm volatile("mov %%cr3, %0" : "=r"(pml4));
+	asm volatile("mov %0, %%cr3" : : "r"(pml4) : "memory");
+}
+
 static void pmap_invalidate_range(vaddr_t va, size_t length, size_t pgsz)
 {
 	for (size_t i = 0; i < length; i += pgsz) {
@@ -131,6 +138,7 @@ static void pmap_invalidate_range(vaddr_t va, size_t length, size_t pgsz)
 struct shootdown_context {
 	vaddr_t va;
 	size_t length;
+	bool kernel;
 #ifdef PMAP_HAS_LARGE_PAGE_SIZES
 	size_t level;
 #endif
@@ -149,7 +157,12 @@ static void shootdown_handler(void *ctx)
 	size_t pgsz = PAGE_SIZE;
 #endif
 
-	pmap_invalidate_range(va, len, pgsz);
+	// more efficient to just flush the whole thing altogether
+	if ((len >> PAGE_SHIFT) >= 64) {
+		pmap_flush_tlb();
+	} else {
+		pmap_invalidate_range(va, len, pgsz);
+	}
 }
 
 size_t n_shootdowns = 0;
