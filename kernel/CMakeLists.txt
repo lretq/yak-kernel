@@ -43,6 +43,7 @@ target_compile_definitions(kernel
 	${YAK_ARCH}
 	ARCH_STR="${YAK_ARCH}"
 
+	CONFIG_SYSCALL_LOG=1
 	CONFIG_DEBUG=1
 	CONFIG_UBSAN=1
 

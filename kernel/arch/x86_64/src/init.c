@@ -95,7 +95,7 @@ __no_san void plat_syscall_handler(struct syscall_frame *frame)
 		return;
 	}
 
-#if 1
+#if CONFIG_SYSCALL_LOG
 	syscall_log(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10,
 		    frame->r8, frame->r9);
 #endif
