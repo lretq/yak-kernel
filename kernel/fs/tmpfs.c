@@ -1,10 +1,10 @@
 #define pr_fmt(fmt) "tmpfs: " fmt
 
-#include <assert.h>
 #include <string.h>
 #include <stddef.h>
 #include <yak/heap.h>
 #include <yak/queue.h>
+#include <yak/vm/object.h>
 #include <yak/timer.h>
 #include <yak/hashtable.h>
 #include <yak/fs/vfs.h>
@@ -19,42 +19,11 @@
 #include <yak/log.h>
 #include <yak-abi/poll.h>
 
-struct tmpfs_node {
-	struct vnode vnode;
-	struct vattr vattr;
+#include "tmpfs.h"
 
-	char *name;
-	size_t name_len;
-
-	char *link_path;
-
-	struct hashtable children;
-};
-
-struct tmpfs {
-	struct vfs vfs;
-
-	struct tmpfs_node *root;
-	size_t seq_ino;
-};
-
-#define TO_TMP(vn_ptr)                                                       \
-	({                                                                   \
-		_Static_assert(__builtin_types_compatible_p(typeof(vn_ptr),  \
-							    struct vnode *), \
-			       "TO_TMP: argument must be a struct vnode *"); \
-		(struct tmpfs_node *)(vn_ptr);                               \
-	})
-
-#define TO_TMPFS(vfs_ptr)                                                    \
-	({                                                                   \
-		_Static_assert(__builtin_types_compatible_p(typeof(vfs_ptr), \
-							    struct vfs *),   \
-			       "TO_TMP: argument must be a struct vnode *"); \
-		(struct tmpfs *)(vfs_ptr);                                   \
-	})
-
-static struct tmpfs_node *create_node(struct vfs *vfs, enum vtype type);
+static void free_node(struct vnode *node);
+static status_t alloc_node(struct vfs *vfs, enum vtype type,
+			   struct tmpfs_node **out);
 
 static struct vnode *tmpfs_getroot(struct vfs *vfs)
 {
@@ -102,9 +71,10 @@ static status_t tmpfs_getattr(struct vnode *vn, struct vattr *attr)
 static status_t tmpfs_create(struct vnode *parent, enum vtype type, char *name,
 			     struct vattr *initial_attr, struct vnode **out)
 {
-	struct tmpfs_node *parent_node = TO_TMP(parent);
+	status_t rv;
 
-	vnode_ref(parent);
+	// Parent lifetime is managed by caller (see vfs_create)
+	struct tmpfs_node *parent_node = TO_TMP(parent);
 
 	struct tmpfs_node *n = NULL;
 
@@ -113,28 +83,36 @@ static status_t tmpfs_create(struct vnode *parent, enum vtype type, char *name,
 	if ((n = ht_get(&parent_node->children, name, name_len)) != NULL) {
 		pr_debug("exists already: %s (parent: %s, n: %s)\n", name,
 			 parent_node->name, n->name);
-		vnode_deref(parent);
 		return YAK_EXISTS;
 	}
 
-	struct tmpfs_node *node = create_node(parent->vfs, type);
-	if (!node) {
-		vnode_deref(parent);
-		return YAK_OOM;
-	}
+	struct tmpfs_node *node;
+	TRY(alloc_node(parent->vfs, type, &node));
 
 	node->name_len = name_len;
 	node->name = strndup(name, node->name_len);
 
+	// All directories have '.' as well
 	node->vattr.nlinks = (type == VDIR) ? 2 : 1;
+
 	tmpfs_setattr(&node->vnode, SETATTR_ALL, initial_attr);
 
-	EXPECT(ht_set(&parent_node->children, name, name_len, node, 0));
-
+	// Try to add link to parent first -> less to cleanup
 	if (type == VDIR) {
-		// XXX: but muh errors :(
-		EXPECT(ht_set(&node->children, "..", 2, parent_node, 1));
+		rv = ht_set(&node->children, "..", 2, parent_node, true);
+		if (IS_ERR(rv)) {
+			free_node(TO_VN(node));
+			return rv;
+		}
 		parent_node->vattr.nlinks++;
+	}
+
+	// Finally add the named link in parent
+	rv = ht_set(&parent_node->children, name, name_len, node, false);
+	if (IS_ERR(rv)) {
+		free_node(TO_VN(node));
+		parent_node->vattr.nlinks--;
+		return rv;
 	}
 
 	*out = &node->vnode;
@@ -206,7 +184,7 @@ static status_t tmpfs_readlink(struct vnode *vn, char **path)
 	return YAK_SUCCESS;
 }
 
-static status_t tmpfs_getdirents(struct vnode *vn, struct dirent *buf,
+static status_t tmpfs_getdirents(struct vnode *vn, struct mlibc_dirent *buf,
 				 size_t bufsize, size_t *offset,
 				 size_t *bytes_read)
 {
@@ -230,7 +208,8 @@ static status_t tmpfs_getdirents(struct vnode *vn, struct dirent *buf,
 		struct tmpfs_node *child = elm->value;
 		const char *name = elm->key;
 		const size_t namelen = elm->key_len;
-		size_t reclen = offsetof(struct dirent, d_name) + namelen + 1;
+		size_t reclen =
+			offsetof(struct mlibc_dirent, d_name) + namelen + 1;
 		reclen = ALIGN_UP(reclen, sizeof(long));
 
 		if (total_read + reclen > bufsize) {
@@ -238,7 +217,8 @@ static status_t tmpfs_getdirents(struct vnode *vn, struct dirent *buf,
 			break;
 		}
 
-		struct dirent *d = (struct dirent *)((char *)buf + total_read);
+		struct mlibc_dirent *d =
+			(struct mlibc_dirent *)((char *)buf + total_read);
 		d->d_ino = child->vattr.inode;
 		d->d_off = 0; // ?
 		d->d_reclen = (unsigned short)reclen;
@@ -306,7 +286,7 @@ static status_t tmpfs_poll(struct vnode *vn, short mask, short *ret)
 	return YAK_SUCCESS;
 }
 
-static struct vn_ops tmpfs_vn_op = {
+struct vn_ops tmpfs_vn_op = {
 	.vn_lookup = tmpfs_lookup,
 	.vn_create = tmpfs_create,
 	.vn_symlink = tmpfs_symlink,
@@ -343,47 +323,44 @@ INIT_NODE(tmpfs, tmpfs_init);
 
 static status_t tmpfs_mount(struct vnode *vn)
 {
-	struct tmpfs *fs = kzalloc(sizeof(struct tmpfs));
+	struct tmpfs *fs = kzalloc(sizeof(*fs));
 	fs->seq_ino = 1;
-
-	vnode_ref(vn);
-
 	fs->vfs.ops = &tmpfs_op;
 
+	// Try to create the root node
+	TRY(alloc_node(&fs->vfs, VDIR, &fs->root));
+
+	vnode_ref(vn);
 	vn->mounted_vfs = &fs->vfs;
-
-	fs->root = create_node(&fs->vfs, VDIR);
-
 	fs->root->vnode.node_covered = vn;
 
 	return YAK_SUCCESS;
 }
 
-static struct tmpfs_node *create_node(struct vfs *vfs, enum vtype type)
+status_t tmpfs_init_node(struct vfs *vfs, struct vnode *vn, enum vtype type)
 {
-	struct tmpfs_node *node = kmalloc(sizeof(struct tmpfs_node));
-	if (!node)
-		return NULL;
+	struct tmpfs *tmpfs = TO_TMPFS(vfs);
+	struct tmpfs_node *node = TO_TMP(vn);
 
-	memset(node, 0, sizeof(struct tmpfs_node));
+	memset(node, 0, sizeof(*node));
 
-	vnode_init(&node->vnode, vfs, &tmpfs_vn_op, type);
+	vnode_init(vn, vfs, &tmpfs_vn_op, type);
 
 	if (type == VDIR) {
 		ht_init(&node->children, ht_hash_str, ht_eq_str);
-
-		// create self-pointer
-		EXPECT(ht_set(&node->children, ".", 1, node, 1));
-	} else {
-		node->vnode.filesize = 0;
-		node->vnode.vobj = vm_aobj_create();
+		// create link to self
+		TRY(ht_set(&node->children, ".", 1, vn, true));
+	} else if (type == VREG) {
+		vn->filesize = 0;
+		vn->vobj = vm_aobj_create();
 	}
 
 	node->name = NULL;
 	node->name_len = 0;
 
-	node->vattr.inode = __atomic_fetch_add(&TO_TMPFS(vfs)->seq_ino, 1,
-					       __ATOMIC_RELAXED);
+	node->vattr.inode =
+		__atomic_fetch_add(&tmpfs->seq_ino, 1, __ATOMIC_RELAXED);
+
 	// XXX: get major/minor from vfs instance
 	node->vattr.major = 0;
 	node->vattr.minor = 0;
@@ -391,5 +368,43 @@ static struct tmpfs_node *create_node(struct vfs *vfs, enum vtype type)
 	node->vattr.rminor = 0;
 	node->vattr.block_size = PAGE_SIZE;
 
-	return node;
+	return YAK_SUCCESS;
+}
+
+void tmpfs_deinit_node(struct vnode *vn)
+{
+	struct tmpfs_node *node = TO_TMP(vn);
+	enum vtype vt = vn->type;
+	if (vt == VDIR) {
+		ht_destroy(&node->children);
+	} else if (vt == VREG) {
+		vm_object_deref(vn->vobj);
+		vn->vobj = NULL;
+	}
+}
+
+static void free_node(struct vnode *vn)
+{
+	tmpfs_deinit_node(vn);
+	kfree(vn, sizeof(struct tmpfs_node));
+}
+
+static status_t alloc_node(struct vfs *vfs, enum vtype type,
+			   struct tmpfs_node **out)
+{
+	struct tmpfs_node *node = kmalloc(sizeof(*node));
+	if (!node) {
+		*out = NULL;
+		return YAK_OOM;
+	}
+
+	status_t rv = tmpfs_init_node(vfs, (void *)node, type);
+	if (IS_ERR(rv)) {
+		kfree(node, sizeof(*node));
+		*out = NULL;
+		return rv;
+	}
+
+	*out = node;
+	return YAK_SUCCESS;
 }

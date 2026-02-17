@@ -353,11 +353,16 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 				goto advance;
 			}
 
+			// if current is a mountpoint, go to the topmost covered vnode
 			if (current->node_covered) {
 				struct vnode *vn = resolve_upward(current);
 				if (vn != current) {
 					pr_warn("found mountpoint?\n");
-					assert(!"todo");
+					VOP_UNLOCK(current);
+					vnode_deref(current);
+					current = vn;
+					vnode_ref(vn);
+					VOP_LOCK(vn);
 				}
 			}
 		}
@@ -369,7 +374,7 @@ status_t vfs_lookup_path(const char *path_, struct vnode *cwd, int flags,
 			return res;
 		}
 
-		// might happen when comp = dot
+		// might be false when comp = '.'
 		if (current != next) {
 			vnode_ref(next);
 			VOP_LOCK(next);
@@ -437,8 +442,6 @@ skip_follow:
 		}
 
 advance:
-		current = next;
-
 		if (is_last) {
 			if (want_dir && next->type != VDIR) {
 				VOP_UNLOCK(next);
@@ -454,6 +457,7 @@ advance:
 			return YAK_SUCCESS;
 		}
 
+		current = next;
 		comp += strlen(comp) + 1;
 	}
 

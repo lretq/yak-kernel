@@ -1,4 +1,5 @@
 yak_add_sources(
+	fcntl.c
 	file.c
 	fork.c
 	mmap.c

@@ -6,7 +6,7 @@
 #include <yak/log.h>
 
 #define SYSCALL_LIST                                                         \
-	X(SYS_OPENAT, sys_openat, "dirfd=%d path=%p flags=%d mode=0%o")      \
+	X(SYS_OPENAT, sys_openat, "dirfd=%d path=%s flags=%d mode=0%o")      \
 	X(SYS_CLOSE, sys_close, "fd=%d")                                     \
 	X(SYS_READ, sys_read, "fd=%d buf=%p count=%ld")                      \
 	X(SYS_WRITE, sys_write, "fd=%d buf=%p count=%ld")                    \
@@ -32,7 +32,7 @@
 	X(SYS_FCNTL, sys_fcntl, "fd=%d op=%d arg=%ld")                       \
 	X(SYS_IOCTL, sys_ioctl, "fd=%d op=%ld argp=%p")                      \
 	X(SYS_FSTATAT, sys_fstatat, "dirfd=%d path=%s buf=%p flags=%d")      \
-	X(SYS_CHDIR, sys_chdir, "path=%p")                                   \
+	X(SYS_CHDIR, sys_chdir, "path=%s")                                   \
 	X(SYS_FCHDIR, sys_fchdir, "fd=%d")                                   \
 	X(SYS_GETDENTS, sys_getdents, "fd=%d buf=%p max=%ld")                \
 	X(SYS_FACCESSAT, sys_faccessat, "dirfd=%d path=%p mode=%d flags=%d") \

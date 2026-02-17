@@ -19,20 +19,6 @@
 
 #include "common.h"
 
-static unsigned int convert_accmode(unsigned int flags)
-{
-	switch (flags & O_ACCMODE) {
-	case O_RDONLY:
-		return FILE_READ;
-	case O_WRONLY:
-		return FILE_WRITE;
-	case O_RDWR:
-		return FILE_READ | FILE_WRITE;
-	default:
-		return -1;
-	}
-}
-
 static void vattr_fill(struct kprocess *proc, struct vattr *attr, mode_t mode)
 {
 	// XXX: correct time
@@ -257,7 +243,8 @@ DEFINE_SYSCALL(SYS_FSTATAT, fstatat, int dirfd, const char *user_path,
 	vnode_deref(vn);
 
 	struct stat stat;
-	stat.st_dev = 0;
+#define TODEV(major, minor) (((major & 0xFFF) << 8) + (minor & 0xFF))
+	stat.st_dev = TODEV(attr.major, attr.minor);
 	stat.st_ino = attr.inode;
 	stat.st_mode = file_mode | attr.mode;
 	stat.st_nlink = attr.nlinks;
@@ -283,7 +270,7 @@ DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 {
 	struct kprocess *proc = curproc();
 
-	int file_flags = convert_accmode(flags);
+	int file_flags = rwmode_to_internal(flags);
 	if (file_flags == -1)
 		return SYS_ERR(EINVAL);
 
@@ -342,7 +329,7 @@ DEFINE_SYSCALL(SYS_OPENAT, openat, int dirfd, const char *user_path, int flags,
 	guard(mutex)(&proc->fd_mutex);
 
 	int fd;
-	rv = fd_alloc(proc, &fd);
+	rv = fd_alloc_file(proc, &fd);
 	if (IS_ERR(rv)) {
 		vnode_deref(vn);
 		return SYS_ERR(status_errno(rv));
@@ -365,14 +352,16 @@ DEFINE_SYSCALL(SYS_CLOSE, close, int fd)
 {
 	struct kprocess *proc = curproc();
 
-	kmutex_acquire(&proc->fd_mutex, TIMEOUT_INFINITE);
+	pr_info("sys_close: pid %lld\n", proc->pid);
+
+	guard(mutex)(&proc->fd_mutex);
+
 	struct fd *desc = fd_safe_get(proc, fd);
 	if (!desc) {
-		kmutex_release(&proc->fd_mutex);
 		return SYS_ERR(EBADF);
 	}
+
 	fd_close(proc, fd);
-	kmutex_release(&proc->fd_mutex);
 
 	return SYS_OK(0);
 }
@@ -380,17 +369,22 @@ DEFINE_SYSCALL(SYS_CLOSE, close, int fd)
 DEFINE_SYSCALL(SYS_DUP, dup, int fd)
 {
 	struct kprocess *proc = curproc();
-	int newfd = -1;
-	status_t rv = fd_duplicate(proc, fd, &newfd, 0);
+	int alloc_fd;
+	status_t rv = fd_duplicate(proc, fd, -1, FD_DUPE_NOCLOEXEC, &alloc_fd);
 	RET_ERRNO_ON_ERR(rv);
-	return SYS_OK(newfd);
+	return SYS_OK(alloc_fd);
 }
 
 DEFINE_SYSCALL(SYS_DUP2, dup2, int oldfd, int newfd)
 {
 	struct kprocess *proc = curproc();
-	status_t rv = fd_duplicate(proc, oldfd, &newfd, 0);
+	status_t rv =
+		fd_duplicate(proc, oldfd, newfd, FD_DUPE_NOCLOEXEC, &newfd);
 	RET_ERRNO_ON_ERR(rv);
+
+	pr_debug("dup2 from %d to %d\n", oldfd, newfd);
+	pr_debug("now file ptr to %p\n", proc->fds[newfd]->file);
+
 	return SYS_OK(newfd);
 }
 
@@ -541,91 +535,6 @@ DEFINE_SYSCALL(SYS_FALLOCATE, fallocate, int fd, int mode, off_t offset,
 	}
 
 	status_t rv = VOP_FALLOCATE(file->vnode, mode, offset, size);
-	RET_ERRNO_ON_ERR(rv);
-	return SYS_OK(0);
-}
-
-DEFINE_SYSCALL(SYS_FCNTL, fcntl, int fd, int op, size_t arg)
-{
-	struct kprocess *proc = curproc();
-
-	status_t rv = YAK_INVALID_ARGS;
-
-	switch (op) {
-	case F_DUPFD:
-		int newfd = -1;
-		rv = fd_duplicate(proc, fd, &newfd, FD_DUPE_NOCLOEXEC);
-		break;
-	case F_GETFD: {
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			rv = YAK_BADF;
-			break;
-		}
-		return SYS_OK(desc->flags);
-	}
-	case F_SETFD: {
-		guard(mutex)(&proc->fd_mutex);
-		struct fd *desc = fd_safe_get(proc, fd);
-		if (!desc) {
-			rv = YAK_BADF;
-			break;
-		}
-
-		// check if all the flags are supported
-		if (0 != (arg & ~(FD_CLOEXEC))) {
-			rv = YAK_INVALID_ARGS;
-			break;
-		}
-
-		rv = YAK_SUCCESS;
-		desc->flags = arg;
-		break;
-	}
-	case F_GETFL: {
-		struct file *file;
-
-		{
-			guard(mutex)(&proc->fd_mutex);
-			struct fd *desc = fd_safe_get(proc, fd);
-			if (!desc) {
-				return SYS_ERR(EBADF);
-			}
-			file = desc->file;
-			file_ref(file);
-		}
-
-		guard_ref_adopt(file, file);
-
-		return SYS_OK(file->flags);
-	}
-	case F_SETFL: {
-		struct file *file;
-
-		{
-			guard(mutex)(&proc->fd_mutex);
-			struct fd *desc = fd_safe_get(proc, fd);
-			if (!desc) {
-				return SYS_ERR(EBADF);
-			}
-			file = desc->file;
-			file_ref(file);
-		}
-
-		guard_ref_adopt(file, file);
-
-		// TODO: mask off args
-		// only allow certain flags
-		// and actually set some when they get meaning
-
-		return SYS_OK(0);
-	}
-	default:
-		pr_warn("unimplemented fcntl op: %d\n", op);
-		return SYS_ERR(ENOTSUP);
-	}
-
 	RET_ERRNO_ON_ERR(rv);
 	return SYS_OK(0);
 }

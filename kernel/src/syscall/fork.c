@@ -1,3 +1,4 @@
+#include "yak/file.h"
 #include <string.h>
 #include <assert.h>
 #include <yak/syscall.h>
@@ -38,23 +39,9 @@ DEFINE_SYSCALL(SYS_FORK, fork)
 	pgrp_insert(pgrp, new_proc);
 	spinlock_unlock(&new_proc->jobctl_lock, ipl);
 
-	{
-		guard(mutex)(&cur_proc->fd_mutex);
-
-		EXPECT(fd_grow(new_proc, cur_proc->fd_cap));
-
-		for (int i = 0; i < cur_proc->fd_cap; i++) {
-			struct fd *desc = fd_safe_get(cur_proc, i);
-			if (!desc)
-				continue;
-			struct fd *desc_copy = kmalloc(sizeof(struct fd));
-			desc_copy->file = desc->file;
-			desc_copy->flags = desc->flags;
-			file_ref(desc->file);
-			new_proc->fds[i] = desc_copy;
-			assert(fd_safe_get(new_proc, i));
-		}
-	}
+	kmutex_acquire(&cur_proc->fd_mutex, TIMEOUT_INFINITE);
+	fd_clone(cur_proc, new_proc);
+	kmutex_release(&cur_proc->fd_mutex);
 
 	struct kthread *new_thread = kmalloc(sizeof(struct kthread));
 	assert(new_thread != NULL);

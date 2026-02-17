@@ -57,6 +57,7 @@ void tty_init()
 
 	struct vnode *vn;
 	devfs_register("tty", VCHR, DEV_TTY, MAX_TTY, &ctty_ops, &vn);
+	vnode_deref(vn);
 }
 
 static const struct termios default_termios =

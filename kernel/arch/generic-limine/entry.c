@@ -181,7 +181,7 @@ static void load_modules()
 }
 
 INIT_ENTAILS(boot_modules);
-INIT_DEPS(boot_modules, rootfs_stage);
+INIT_DEPS(boot_modules, rootfs);
 INIT_NODE(boot_modules, load_modules);
 
 static void reclaim_memory()

@@ -165,7 +165,7 @@ struct vnode {
 	int flags;
 };
 
-struct dirent {
+struct mlibc_dirent {
 	ino_t d_ino;
 	off_t d_off;
 	unsigned short d_reclen;
@@ -190,7 +190,7 @@ struct vn_ops {
 
 	status_t (*vn_inactive)(struct vnode *vp);
 
-	status_t (*vn_getdirents)(struct vnode *vp, struct dirent *buf,
+	status_t (*vn_getdirents)(struct vnode *vp, struct mlibc_dirent *buf,
 				  size_t bufsize, size_t *offset,
 				  size_t *bytes_read);
 

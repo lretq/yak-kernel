@@ -10,8 +10,11 @@
 status_t vfs_vobj_write(struct vnode *vn, voff_t offset, const void *buf,
 			size_t length, size_t *writtenp)
 {
-	if (writtenp == NULL || vn->type == VDIR)
+	if (writtenp == NULL)
 		return YAK_INVALID_ARGS;
+
+	if (vn->type != VREG)
+		return YAK_NOT_SUPPORTED;
 
 	struct vm_object *vobj = vn->vobj;
 	assert(vobj);
@@ -65,8 +68,11 @@ status_t vfs_vobj_write(struct vnode *vn, voff_t offset, const void *buf,
 status_t vfs_vobj_read(struct vnode *vn, voff_t offset, void *buf,
 		       size_t length, size_t *readp)
 {
-	if (readp == NULL || vn->type == VDIR)
+	if (readp == NULL)
 		return YAK_INVALID_ARGS;
+
+	if (vn->type != VREG)
+		return YAK_NOT_SUPPORTED;
 
 	struct vm_object *obj = vn->vobj;
 	assert(obj);
@@ -194,7 +200,7 @@ status_t vfs_generic_inactive(struct vnode *vn)
 	return YAK_SUCCESS;
 }
 
-status_t vfs_generic_getdirents(struct vnode *vp, struct dirent *buf,
+status_t vfs_generic_getdirents(struct vnode *vp, struct mlibc_dirent *buf,
 				size_t bufsize, size_t *offset,
 				size_t *bytes_read)
 {
