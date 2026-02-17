@@ -352,8 +352,6 @@ DEFINE_SYSCALL(SYS_CLOSE, close, int fd)
 {
 	struct kprocess *proc = curproc();
 
-	pr_info("sys_close: pid %lld\n", proc->pid);
-
 	guard(mutex)(&proc->fd_mutex);
 
 	struct fd *desc = fd_safe_get(proc, fd);
