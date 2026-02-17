@@ -156,7 +156,7 @@ void page_zero(struct page *page, unsigned int order)
 	       (1ULL << (order + PAGE_SHIFT)));
 }
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 #define VALIDATE
 #if 0
 #define HARDCORE_VALIDATE

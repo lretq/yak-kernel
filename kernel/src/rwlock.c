@@ -12,7 +12,7 @@
 void rwlock_init(struct rwlock *rwlock, [[maybe_unused]] const char *name)
 {
 	event_init(&rwlock->event, 0, 0);
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 	rwlock->name = name;
 #endif
 	rwlock->state = 0;

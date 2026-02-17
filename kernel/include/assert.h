@@ -12,7 +12,7 @@ void __assert_fail(const char *assertion, const char *file, unsigned int line,
 
 #undef assert
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 #define assert(expr)              \
 	((void)(likely((expr)) || \
 		(__assert_fail(#expr, __FILE__, __LINE__, __func__), 0)))

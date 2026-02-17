@@ -166,7 +166,7 @@ void vm_map_tmp_disable(struct vm_map *map);
 struct vm_map_entry *vm_map_lookup_entry_locked(struct vm_map *map,
 						vaddr_t address);
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 void vm_map_dump(struct vm_map *map);
 #endif
 

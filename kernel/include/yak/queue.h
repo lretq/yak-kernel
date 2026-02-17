@@ -499,7 +499,7 @@
 		(elm)->field.tqe_prev = &(head)->tqh_first;              \
 	} while (0)
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 #define TAILQ_VERIFY(head)                        \
 	do {                                      \
 		assert((head)->tqh_last != NULL); \

@@ -12,7 +12,7 @@
 void kmutex_init(struct kmutex *mutex, [[maybe_unused]] const char *name)
 {
 	event_init(&mutex->event, false, 0);
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 	mutex->name = name;
 #endif
 	mutex->owner = NULL;

@@ -125,7 +125,7 @@ const char *entry_type(struct vm_map_entry *entry)
 	return "<unknown>";
 }
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 void vm_map_dump(struct vm_map *map)
 {
 	struct vm_map_entry *entry;
