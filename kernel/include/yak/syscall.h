@@ -27,8 +27,7 @@ extern syscall_fn syscall_table[MAX_SYSCALLS];
 #define _RET_ERRNO_ON_ERR_INTERNAL(expr, resvar)              \
 	do {                                                  \
 		status_t resvar = expr;                       \
-		IF_ERR(resvar)                                \
-		{                                             \
+		if (IS_ERR(resvar) && resvar != YAK_EOF) {    \
 			return SYS_ERR(status_errno(resvar)); \
 		}                                             \
 	} while (0)
