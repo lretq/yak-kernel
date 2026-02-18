@@ -7,9 +7,10 @@
 #define STACK_CHK_GUARD 0x595e9fbd94fda766
 #endif
 
+[[gnu::used]]
 uintptr_t __stack_chk_guard = STACK_CHK_GUARD;
 
-[[gnu::noreturn, gnu::cold]]
+[[gnu::noreturn, gnu::cold, gnu::used]]
 void __stack_chk_fail(void)
 {
 	panic("stack smashing detected\n");
