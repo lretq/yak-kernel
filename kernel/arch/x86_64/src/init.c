@@ -276,7 +276,7 @@ LIMINE_REQ struct limine_mp_request mp_request = {
 
 // TODO: Do the SMP startup ourselves
 
-struct extra_info {
+struct [[gnu::aligned(64)]] extra_info {
 	uintptr_t cr3;
 	void *stack_top;
 	int done;
@@ -334,7 +334,17 @@ static void naked_ap_entry(struct limine_mp_info *info)
 		     : "memory");
 }
 
-static struct extra_info extra;
+static struct extra_info all_ap_info_structs[MAX_NR_CPUS] = { 0 };
+
+void wait_for_all(size_t max_cpu)
+{
+	for (size_t i = 0; i < max_cpu; i++) {
+		while (__atomic_load_n(&all_ap_info_structs[i].done,
+				       __ATOMIC_RELAXED) != 1) {
+			asm volatile("pause" ::: "memory");
+		}
+	}
+}
 
 void start_aps()
 {
@@ -342,40 +352,44 @@ void start_aps()
 
 	struct limine_mp_response *response = mp_request.response;
 
-	__all_cpus = kcalloc(response->cpu_count, sizeof(struct cpu *));
+	size_t cpu_count = response->cpu_count;
 
-	for (size_t i = 0; i < response->cpu_count; i++) {
-		struct limine_mp_info *info = response->cpus[i];
+	__all_cpus = kcalloc(cpu_count, sizeof(struct cpu *));
+	__all_cpus[curcpu().cpu_id] = curcpu_ptr();
+
+	paddr_t kernel_cr3 = read_cr3();
+
+	size_t percpu_size = (uintptr_t)__kernel_percpu_end -
+			     (uintptr_t)__kernel_percpu_start;
+
+	for (size_t cpu = 0; cpu < cpu_count; cpu++) {
+		struct limine_mp_info *info = response->cpus[cpu];
 
 		if (info->lapic_id == curcpu().md.apic_id)
 			continue;
 
-		extra.cr3 = read_cr3();
-		extra.done = 0;
-		extra.stack_top =
-			(void *)((vaddr_t)vm_kalloc(KSTACK_SIZE, VM_SLEEP) +
-				 KSTACK_SIZE);
+		struct extra_info *extra_arg = &all_ap_info_structs[cpu];
 
-		size_t percpu_size = (uintptr_t)__kernel_percpu_end -
-				     (uintptr_t)__kernel_percpu_start;
+		void *stack = vm_kalloc(KSTACK_SIZE, VM_SLEEP);
+		void *stack_top = (void *)((vaddr_t)stack + KSTACK_SIZE);
 
 		vaddr_t percpu_area = (vaddr_t)vm_kalloc(
 			ALIGN_UP(percpu_size, PAGE_SIZE), VM_SLEEP);
 
 		pr_debug("percpu_area: %lx\n", percpu_area);
 
-		extra.percpu_offset =
+		extra_arg->cr3 = kernel_cr3;
+		extra_arg->done = 0;
+		extra_arg->stack_top = stack_top;
+		extra_arg->percpu_offset =
 			percpu_area - (uintptr_t)__kernel_percpu_start;
 
-		info->extra_argument = (uint64_t)&extra;
+		info->extra_argument = (uint64_t)extra_arg;
 		info->goto_address = naked_ap_entry;
-
-		while (__atomic_load_n(&extra.done, __ATOMIC_RELAXED) != 1) {
-			asm volatile("pause" ::: "memory");
-		}
 	}
 
-	__all_cpus[curcpu().cpu_id] = curcpu_ptr();
+	all_ap_info_structs[curcpu().cpu_id].done = 1;
+	wait_for_all(cpu_count);
 
 	enable_interrupts();
 }
