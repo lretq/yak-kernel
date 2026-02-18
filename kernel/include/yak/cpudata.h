@@ -22,6 +22,12 @@ struct cpu {
 
 	size_t cpu_id;
 
+	ipl_t hw_ipl;
+
+#if CONFIG_LAZY_IPL
+	ipl_t soft_ipl;
+#endif
+
 	void *syscall_temp;
 	void *kstack_top;
 

@@ -46,6 +46,11 @@ void cpudata_init(struct cpu *cpu, void *stack_top)
 		__all_cpus = &bsp_ptr;
 	}
 
+	cpu->hw_ipl = 0;
+#if CONFIG_LAZY_IPL
+	cpu->soft_ipl = 0;
+#endif
+
 	cpu->current_map = NULL;
 
 	cpu->softint_pending = 0;

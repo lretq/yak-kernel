@@ -175,7 +175,22 @@ void __isr_c_entry(struct context *frame)
 		dump_context(frame);
 		hcf();
 	} else {
-		ipl_t ipl = ripl(frame->number >> 4);
+		ipl_t ipl = curipl();
+		ipl_t level_ipl = frame->number >> 4;
+
+#if CONFIG_LAZY_IPL
+		if (ipl >= level_ipl && curcpu().hw_ipl < level_ipl) {
+			write_cr8(level_ipl);
+			curcpu().hw_ipl = level_ipl;
+			lapic_eoi();
+			lapic_defer_interrupt(frame->number);
+			return;
+		}
+#endif
+
+		ripl(level_ipl);
+		asm volatile("sti");
+
 		irq_vec_t vec = frame->number - 32;
 		struct irq_slot *sl = &slots[vec];
 
@@ -190,6 +205,7 @@ void __isr_c_entry(struct context *frame)
 			lapic_eoi();
 		}
 
+		asm volatile("cli");
 		xipl(ipl);
 	}
 }

@@ -471,7 +471,7 @@ void sched_exit_self()
 
 void idle_loop()
 {
-	setipl(IPL_PASSIVE);
+	xipl(IPL_PASSIVE);
 	while (1) {
 		assert(curipl() == IPL_PASSIVE);
 #if defined __x86_64__
