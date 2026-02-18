@@ -88,7 +88,7 @@ extern char __init_stack_top[];
 void syscall_log(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3,
 		 uintptr_t arg4, uintptr_t arg5, uintptr_t arg6);
 
-__no_san void plat_syscall_handler(struct syscall_frame *frame)
+__no_san __used void plat_syscall_handler(struct syscall_frame *frame)
 {
 	if (frame->rax >= MAX_SYSCALLS) {
 		pr_error("request syscall >= MAX_SYSCALLS\n");
@@ -202,13 +202,17 @@ static void setup_cpu()
 	gdt_init();
 	// load our gdt
 	gdt_reload();
+
+	write_cr8(0);
 }
 
 void init_early_output()
 {
 	// XXX: We may want to check for port e9?
 	console_register(&com1_console);
+#if CONFIG_SERIAL
 	sink_add(&com1_console);
+#endif
 }
 
 void init_bsp_cpudata()
