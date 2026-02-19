@@ -63,6 +63,8 @@ void kinfo_launch()
 			     NULL, 1, NULL);
 }
 
+#if ENABLE_KINFO
 INIT_ENTAILS(kinfo);
 INIT_DEPS(kinfo);
 INIT_NODE(kinfo, kinfo_launch);
+#endif

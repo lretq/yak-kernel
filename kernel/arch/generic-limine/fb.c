@@ -18,7 +18,7 @@
 
 LIMINE_REQ
 volatile struct limine_framebuffer_request fb_request = {
-	.id = LIMINE_FRAMEBUFFER_REQUEST,
+	.id = LIMINE_FRAMEBUFFER_REQUEST_ID,
 	.revision = 0,
 };
 
@@ -97,21 +97,15 @@ void limine_fb_setup()
 			font_scale_y = 4;
 		}
 
-		struct winsize ws;
-		ws.ws_xpixel = fb->width;
-		ws.ws_ypixel = fb->height;
-		int char_w = 8 * font_scale_x;
-		int char_h = 16 * font_scale_y;
-		ws.ws_col = fb->width / char_w;
-		ws.ws_row = fb->height / char_h;
+		size_t console_height = fb->height;
 
+#if ENABLE_KINFO
 		if (!kinfo_flanterm_context) {
 			size_t kinfo_height = KINFO_HEIGHT(font_scale_y);
 
 			kinfo_height_start = fb->height - kinfo_height;
 
-			ws.ws_ypixel = kinfo_height_start;
-			ws.ws_row = kinfo_height_start / char_h;
+			console_height = kinfo_height_start;
 
 			console->private = flanterm_fb_init(
 				kmalloc, kfree, fb->address, fb->width,
@@ -120,7 +114,8 @@ void limine_fb_setup()
 				fb->green_mask_size, fb->green_mask_shift,
 				fb->blue_mask_size, fb->blue_mask_shift, NULL,
 				NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0,
-				1, font_scale_x, font_scale_y, 0);
+				1, font_scale_x, font_scale_y, 0,
+				FLANTERM_FB_ROTATE_0);
 
 			void *footer_address =
 				(void *)((uintptr_t)fb->address +
@@ -136,16 +131,33 @@ void limine_fb_setup()
 				fb->green_mask_shift, fb->blue_mask_size,
 				fb->blue_mask_shift, NULL, NULL, NULL,
 				&kinfo_bg, &kinfo_fg, NULL, NULL, NULL, 0, 0, 1,
-				font_scale_x, font_scale_y, KINFO_MARGIN);
+				font_scale_x, font_scale_y, KINFO_MARGIN,
+				FLANTERM_FB_ROTATE_0);
 		} else {
+#endif
 			console->private = flanterm_fb_init(
 				kmalloc, kfree, fb->address, fb->width,
 				fb->height, fb->pitch, fb->red_mask_size,
 				fb->red_mask_shift, fb->green_mask_size,
 				fb->green_mask_shift, fb->blue_mask_size,
 				fb->blue_mask_shift, NULL, NULL, NULL, NULL,
-				NULL, NULL, NULL, NULL, 0, 0, 1, 0, 0, 0);
+				NULL, NULL, NULL, NULL, 0, 0, 1, 0, 0, 0,
+				FLANTERM_FB_ROTATE_0);
+#if ENABLE_KINFO
 		}
+#endif
+
+		struct winsize ws;
+		ws.ws_xpixel = fb->width;
+		ws.ws_ypixel = console_height;
+
+		size_t ncols;
+		size_t nrows;
+
+		flanterm_get_dimensions(console->private, &ncols, &nrows);
+
+		ws.ws_row = nrows;
+		ws.ws_col = ncols;
 
 		console->native_winsize = ws;
 
@@ -161,6 +173,6 @@ INIT_NODE(fb_setup, limine_fb_setup);
 
 static size_t fb_write(struct console *console, const char *buf, size_t size)
 {
-	flanterm_write(console->private, buf, size);
+	flanterm_write_crnl(console->private, buf, size);
 	return size;
 }

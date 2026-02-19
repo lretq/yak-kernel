@@ -23,11 +23,11 @@
 #include "yak/vm/pmm.h"
 #include <yak/init.h>
 
-extern paddr_t plat_get_rsdp();
+extern vaddr_t plat_get_rsdp();
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address)
 {
-	paddr_t addr = plat_get_rsdp();
+	vaddr_t addr = plat_get_rsdp();
 	if (addr == 0) {
 		*out_rsdp_address = 0;
 		return UACPI_STATUS_NOT_FOUND;

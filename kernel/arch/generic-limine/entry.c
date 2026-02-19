@@ -1,4 +1,5 @@
 #include "yak/init.h"
+#include <stdint.h>
 #include <string.h>
 #include <uacpi/uacpi.h>
 #include <stddef.h>
@@ -15,36 +16,38 @@
 #include "request.h"
 
 LIMINE_REQ
-static volatile LIMINE_BASE_REVISION(3);
+static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(4);
 
-[[gnu::used, gnu::section(".limine_requests_start")]] //
-static volatile LIMINE_REQUESTS_START_MARKER;
+[[gnu::used, gnu::section(".limine_requests_start")]]
+//
+static volatile uint64_t limine_requests_start[] = LIMINE_REQUESTS_START_MARKER;
 
-[[gnu::used, gnu::section(".limine_requests_end")]] //
-static volatile LIMINE_REQUESTS_END_MARKER;
+[[gnu::used, gnu::section(".limine_requests_end")]]
+//
+static volatile uint64_t limine_requests_end[] = LIMINE_REQUESTS_END_MARKER;
 
 LIMINE_REQ static volatile struct limine_memmap_request memmap_request = {
-	.id = LIMINE_MEMMAP_REQUEST,
+	.id = LIMINE_MEMMAP_REQUEST_ID,
 	.revision = 0,
 	.response = NULL,
 };
 
 LIMINE_REQ static volatile struct limine_hhdm_request hhdm_request = {
-	.id = LIMINE_HHDM_REQUEST,
+	.id = LIMINE_HHDM_REQUEST_ID,
 	.revision = 3,
 	.response = NULL,
 };
 
 LIMINE_REQ static volatile struct limine_executable_address_request
 	address_request = {
-		.id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
+		.id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID,
 		.revision = 0,
 		.response = NULL,
 	};
 
 LIMINE_REQ static volatile struct limine_paging_mode_request
 	paging_mode_request = {
-		.id = LIMINE_PAGING_MODE_REQUEST,
+		.id = LIMINE_PAGING_MODE_REQUEST_ID,
 		.revision = 1,
 		.response = NULL,
 #ifdef x86_64
@@ -59,21 +62,22 @@ LIMINE_REQ static volatile struct limine_paging_mode_request
 	};
 
 LIMINE_REQ static volatile struct limine_module_request module_request = {
-	.id = LIMINE_MODULE_REQUEST,
+	.id = LIMINE_MODULE_REQUEST_ID,
 	.revision = 0,
 	.response = NULL,
 };
 
 LIMINE_REQ static volatile struct limine_rsdp_request rsdp_request = {
-	.id = LIMINE_RSDP_REQUEST,
+	.id = LIMINE_RSDP_REQUEST_ID,
 	.revision = 0,
 	.response = NULL
 };
 
-paddr_t plat_get_rsdp()
+vaddr_t plat_get_rsdp()
 {
-	return rsdp_request.response == NULL ? 0 :
-					       rsdp_request.response->address;
+	return rsdp_request.response == NULL ?
+		       0 :
+		       (vaddr_t)rsdp_request.response->address;
 }
 
 size_t HHDM_BASE;

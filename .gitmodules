@@ -19,7 +19,10 @@
 	url = https://github.com/uACPI/uACPI
 [submodule "vendor/flanterm"]
 	path = vendor/flanterm
-	url = https://codeberg.org/mintsuki/flanterm
+	url = https://codeberg.org/yakdist/flanterm
 [submodule "vendor/pairing-heap"]
 	path = vendor/pairing-heap
 	url = https://github.com/lretq/pairing-heap
+[submodule "vendor/limine-protocol"]
+	path = vendor/limine-protocol
+	url = https://codeberg.org/Limine/limine-protocol

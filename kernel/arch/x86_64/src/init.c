@@ -271,7 +271,7 @@ INIT_NODE(x86_ipi_setup, ipi_setup);
 
 #define LIMINE_REQ [[gnu::used, gnu::section(".limine_requests")]]
 LIMINE_REQ struct limine_mp_request mp_request = {
-	.id = LIMINE_MP_REQUEST,
+	.id = LIMINE_MP_REQUEST_ID,
 };
 
 // TODO: Do the SMP startup ourselves
