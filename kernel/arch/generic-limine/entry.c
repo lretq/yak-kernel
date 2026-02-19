@@ -73,11 +73,11 @@ LIMINE_REQ static volatile struct limine_rsdp_request rsdp_request = {
 	.response = NULL
 };
 
-vaddr_t plat_get_rsdp()
+paddr_t plat_get_rsdp()
 {
 	return rsdp_request.response == NULL ?
 		       0 :
-		       (vaddr_t)rsdp_request.response->address;
+		       v2p((vaddr_t)rsdp_request.response->address);
 }
 
 size_t HHDM_BASE;
@@ -132,10 +132,7 @@ void plat_mem_init()
 
 	for (size_t i = 0; i < res->entry_count; i++) {
 		struct limine_memmap_entry *ent = res->entries[i];
-		if (ent->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE &&
-		    ent->type != LIMINE_MEMMAP_FRAMEBUFFER &&
-		    ent->type != LIMINE_MEMMAP_EXECUTABLE_AND_MODULES &&
-		    ent->type != LIMINE_MEMMAP_USABLE)
+		if (ent->type == LIMINE_MEMMAP_BAD_MEMORY)
 			continue;
 
 		vm_cache_t cache = VM_CACHE_DEFAULT;

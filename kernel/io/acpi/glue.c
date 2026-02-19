@@ -23,11 +23,11 @@
 #include "yak/vm/pmm.h"
 #include <yak/init.h>
 
-extern vaddr_t plat_get_rsdp();
+extern paddr_t plat_get_rsdp();
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address)
 {
-	vaddr_t addr = plat_get_rsdp();
+	paddr_t addr = plat_get_rsdp();
 	if (addr == 0) {
 		*out_rsdp_address = 0;
 		return UACPI_STATUS_NOT_FOUND;
@@ -41,8 +41,7 @@ void *uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size len)
 	vaddr_t mapped_addr;
 	status_t status = vm_map_mmio(kmap(), addr, len, VM_RW,
 				      VM_CACHE_DEFAULT, &mapped_addr);
-	IF_ERR(status)
-	{
+	if (IS_ERR(status)) {
 		pr_error("error while mapping 0x%lx: %s\n", addr,
 			 status_str(status));
 		return NULL;

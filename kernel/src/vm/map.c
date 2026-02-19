@@ -565,13 +565,8 @@ status_t vm_map_mmio(struct vm_map *map, paddr_t device_addr, size_t length,
 	length = ALIGN_UP(offset + length, PAGE_SIZE);
 
 	struct vm_map_entry *entry;
-	status_t rv = alloc_map_range_locked(map, 0, length, prot,
-					     VM_INHERIT_NONE, cache, offset,
-					     VM_MAP_ENT_MMIO, 0, &entry);
-	IF_ERR(rv)
-	{
-		return rv;
-	}
+	TRY(alloc_map_range_locked(map, 0, length, prot, VM_INHERIT_NONE, cache,
+				   offset, VM_MAP_ENT_MMIO, 0, &entry));
 
 	entry->mmio_addr = rounded_addr;
 
