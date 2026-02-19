@@ -9,10 +9,12 @@
 #include <yak/init.h>
 #include <yak/irq.h>
 #include <yak/vm/map.h>
-#include <yak/io/base.hh>
-#include <yak/io/pci/Pci.hh>
-#include <yak/io/acpi/AcpiDevice.hh>
-#include <yak/io/IoRegistry.hh>
+#include <yio/pci/Pci.hh>
+#include <yio/acpi/AcpiDevice.hh>
+#include <yio/IoRegistry.hh>
+
+namespace yak::io
+{
 
 IO_OBJ_DEFINE(PlatformExpert, Device)
 #define super Device
@@ -290,3 +292,5 @@ void expert_start()
 INIT_ENTAILS(expert, io);
 INIT_DEPS(expert, acpi_stage);
 INIT_NODE(expert, expert_start);
+
+}

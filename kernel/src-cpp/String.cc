@@ -1,5 +1,7 @@
-#include "yak/log.h"
-#include <yak/io/String.hh>
+#include <yakpp/String.hh>
+
+namespace yak
+{
 
 IO_OBJ_DEFINE(String, Object);
 #define super Object
@@ -13,7 +15,6 @@ void String::init()
 
 void String::deinit()
 {
-	pr_debug("length: %ld\n", length_);
 	delete[] data_;
 	data_ = nullptr;
 	length_ = 0;
@@ -76,4 +77,6 @@ bool String::isEqual(Object *other) const
 size_t String::length() const
 {
 	return length_;
+}
+
 }

@@ -3,13 +3,16 @@
 #include <yak/sched.h>
 #include <yak/mutex.h>
 
-class LockGuard {
+namespace yak
+{
+
+template <typename LockType> class LockGuard {
     public:
-	explicit LockGuard(kmutex &mtx)
-		: mutex_(mtx)
+	explicit LockGuard(LockType &lock)
+		: lockRef_(lock)
 		, locked_(true)
 	{
-		kmutex_acquire(&mutex_, TIMEOUT_INFINITE);
+		lockRef_.lock();
 	}
 
 	LockGuard(const LockGuard &) = delete;
@@ -20,22 +23,24 @@ class LockGuard {
 	~LockGuard()
 	{
 		if (locked_)
-			kmutex_release(&mutex_);
+			lockRef_.unlock();
 	}
 
 	void unlock()
 	{
 		if (locked_)
-			kmutex_release(&mutex_);
+			lockRef_.unlock();
 	}
 
 	void lock()
 	{
 		if (!locked_)
-			kmutex_acquire(&mutex_, TIMEOUT_INFINITE);
+			lockRef_.lock();
 	}
 
     private:
-	kmutex &mutex_;
+	LockType &lockRef_;
 	bool locked_;
 };
+
+}

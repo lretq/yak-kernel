@@ -18,7 +18,7 @@
 #include <yak/types.h>
 #include <yak/sched.h>
 #include <yak/semaphore.h>
-#include <yak/io/pci.h>
+#include <yio/pci.h>
 #include "uacpi/uacpi.h"
 #include "yak/vm/pmm.h"
 #include <yak/init.h>

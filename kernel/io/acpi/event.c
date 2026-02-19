@@ -3,7 +3,7 @@
 #include <yak/dpc.h>
 #include <yak/log.h>
 #include <yak/status.h>
-#include <yak/io/acpi/sleep.h>
+#include <yio/acpi/sleep.h>
 #include <uacpi/event.h>
 
 static struct dpc shutdown_dpc;

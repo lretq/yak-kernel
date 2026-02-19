@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include <yak/io/pci.h>
+#include <yio/pci.h>
 #include <yak/init.h>
 
 INIT_STAGE(pci_access);

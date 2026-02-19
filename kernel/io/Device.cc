@@ -1,5 +1,8 @@
-#include <yak/io/Device.hh>
+#include <yio/Device.hh>
 #include <nanoprintf.h>
+
+namespace yak::io
+{
 
 IO_OBJ_DEFINE_VIRTUAL(Device, TreeNode);
 #define super TreeNode
@@ -20,3 +23,5 @@ bool Device::start([[maybe_unused]] Device *provider)
 };
 
 void Device::stop([[maybe_unused]] Device *provider) {};
+
+}

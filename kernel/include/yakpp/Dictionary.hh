@@ -1,7 +1,11 @@
 #pragma once
 
-#include <yak/io/base.hh>
-#include <yak/io/String.hh>
+#include <yakpp/String.hh>
+#include <yakpp/Object.hh>
+#include <stddef.h>
+
+namespace yak
+{
 
 class Dictionary : public Object {
 	IO_OBJ_DECLARE(Dictionary);
@@ -78,3 +82,5 @@ class Dictionary : public Object {
 	size_t count = 0;
 	size_t capacity = 0;
 };
+
+}

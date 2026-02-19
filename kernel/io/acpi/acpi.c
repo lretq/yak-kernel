@@ -3,8 +3,8 @@
 #include <yak/log.h>
 #include <yak/init.h>
 #include <yak/status.h>
-#include <yak/io/acpi.h>
-#include <yak/io/acpi/event.h>
+#include <yio/acpi.h>
+#include <yio/acpi/event.h>
 
 void acpi_init()
 {

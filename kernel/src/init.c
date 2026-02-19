@@ -9,12 +9,12 @@
 #include <yak/irq.h>
 #include <yak/cpu.h>
 #include <yak/tty.h>
-#include <yak/io/console.h>
 #include <yak/vm/map.h>
 #include <yak/fs/vfs.h>
 #include <yak/ipi.h>
 #include <yak/status.h>
 #include <yak/timer.h>
+#include <yak/console.h>
 #include <yak/wait.h>
 
 #include <config.h>

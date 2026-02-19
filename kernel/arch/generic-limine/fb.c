@@ -8,7 +8,7 @@
 #include <yak/heap.h>
 #include <yak/init.h>
 #include <yak/spinlock.h>
-#include <yak/io/console.h>
+#include <yak/console.h>
 #include <yak/file.h>
 #include <yak/fs/devfs.h>
 #include <yak/fs/vfs.h>

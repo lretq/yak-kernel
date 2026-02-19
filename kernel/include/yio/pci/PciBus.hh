@@ -1,8 +1,10 @@
 #pragma once
 
-#include <yak/io/base.hh>
-#include <yak/io/Device.hh>
+#include <yio/Device.hh>
 #include <stdint.h>
+
+namespace yak::io
+{
 
 struct PciBus : public Device {
 	IO_OBJ_DECLARE(PciBus);
@@ -22,3 +24,5 @@ struct PciBus : public Device {
 
 	uint32_t seg, bus, slot, function;
 };
+
+}

@@ -1,12 +1,15 @@
 #define pr_fmt(fmt) "PciBus: " fmt
 
-#include <yak/io/pci/PciBus.hh>
-#include <yak/io/pci/PciDevice.hh>
+#include <yio/pci/PciBus.hh>
+#include <yio/pci/PciDevice.hh>
 #include <yak/log.h>
 #include <nanoprintf.h>
 
 #define PCI_UTILS
 #include "pci-utils.h"
+
+namespace yak::io
+{
 
 IO_OBJ_DEFINE(PciBus, Device);
 #define super Device
@@ -137,4 +140,6 @@ void pci_enumerate(Device *provider)
 			dev->release();
 		}
 	}
+}
+
 }

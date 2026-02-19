@@ -8,20 +8,19 @@
 #include <yak/log.h>
 #include <yak/init.h>
 #include <yak/tty.h>
-#include <yak/io/acpi/AcpiDevice.hh>
-#include <yak/io/acpi/AcpiPersonality.hh>
-#include <yak/io/pci/Pci.hh>
-#include <yak/io/base.hh>
-#include <yak/io/Device.hh>
-#include <yak/io/Dictionary.hh>
-#include <yak/io/String.hh>
-#include <yak/io/pci/PciPersonality.hh>
+#include <yio/acpi/AcpiDevice.hh>
+#include <yio/acpi/AcpiPersonality.hh>
+#include <yio/pci/Pci.hh>
+#include <yio/Device.hh>
+#include <yio/pci/PciPersonality.hh>
 
 #include "../arch/x86_64/src/asm.h"
 
 #define RINGBUF_SIZE 256
 
 extern "C" struct tty *console_tty;
+
+using namespace yak::io;
 
 static const char codes[128] = {
 	'\0', '\e', '1',  '2',	'3',  '4',  '5',  '6',	'7',  '8',  '9',  '0',
@@ -51,8 +50,8 @@ static const char codes_shifted[128] = {
 	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'
 };
 
-class Ps2Kbd final : public Device {
-	IO_OBJ_DECLARE(Ps2Kbd);
+class Ps2Keyboard final : public Device {
+	IO_OBJ_DECLARE(Ps2Keyboard);
 
     public:
 	int probe([[maybe_unused]] Device *provider) override
@@ -62,7 +61,7 @@ class Ps2Kbd final : public Device {
 
 	static uacpi_iteration_decision cb(void *user, uacpi_resource *resource)
 	{
-		Ps2Kbd *self = (Ps2Kbd *)user;
+		Ps2Keyboard *self = (Ps2Keyboard *)user;
 		switch (resource->type) {
 		case UACPI_RESOURCE_TYPE_IRQ:
 			self->gsi_ = resource->irq.irqs[0];
@@ -85,7 +84,7 @@ class Ps2Kbd final : public Device {
 		return UACPI_ITERATION_DECISION_CONTINUE;
 	}
 
-	void tty_write_str(struct tty *tty, const char *s)
+	static void tty_write_str(struct tty *tty, const char *s)
 	{
 		while (*s) {
 			tty_input(tty, *s++);
@@ -207,13 +206,13 @@ class Ps2Kbd final : public Device {
 
 	static void dpc_handler(__unused struct dpc *dpc, void *arg)
 	{
-		auto kbd = (Ps2Kbd *)arg;
+		auto kbd = (Ps2Keyboard *)arg;
 		kbd->handler();
 	}
 
 	static int ps2_irq_handler(void *arg)
 	{
-		auto kbd = (Ps2Kbd *)arg;
+		auto kbd = (Ps2Keyboard *)arg;
 
 		if ((inb(kbd->cmd_port_) & 0x1) == 0) {
 			return IRQ_NACK;
@@ -296,9 +295,10 @@ class Ps2Kbd final : public Device {
 	bool shifted = false;
 };
 
-IO_OBJ_DEFINE(Ps2Kbd, Device);
+IO_OBJ_DEFINE(Ps2Keyboard, Device);
 
-AcpiPersonality ps2kbdPers = AcpiPersonality(&Ps2Kbd::classInfo, "PNP0303");
+AcpiPersonality ps2kbdPers =
+	AcpiPersonality(&Ps2Keyboard::classInfo, "PNP0303");
 
 void ps2_register()
 {

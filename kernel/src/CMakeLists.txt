@@ -28,4 +28,5 @@ yak_add_sources(
 	jobctl.c
 	file.c
 	timer.c
+	console.c
 )

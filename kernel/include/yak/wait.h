@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <yak/status.h>
 #include <yak/types.h>
@@ -42,3 +46,7 @@ status_t sched_wait_many(struct wait_block *table, void **objects, size_t count,
 // Wait Type is only available for sched_wait_many
 // as ALL/ANY distinction does not make sense for a single object
 status_t sched_wait(void *object, wait_mode_t wait_mode, nstime_t timeout);
+
+#ifdef __cplusplus
+}
+#endif

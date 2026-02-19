@@ -1,7 +1,9 @@
 #pragma once
 
-#include <yak/io/base.hh>
-#include <yak/io/IoRegistry.hh>
+#include <yio/Personality.hh>
+
+namespace yak::io
+{
 
 struct AcpiPersonality : public Personality {
 	IO_OBJ_DECLARE(AcpiPersonality);
@@ -43,3 +45,5 @@ struct AcpiPersonality : public Personality {
 	const char *PNP_ID = nullptr;
 	const ClassInfo *clazz = nullptr;
 };
+
+}

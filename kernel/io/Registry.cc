@@ -1,19 +1,20 @@
 #include <yak/log.h>
-#include <yak/io/Device.hh>
-#include <yak/io/LockGuard.hh>
 #include <yak/queue.h>
-#include <yak/io/IoRegistry.hh>
+#include <yio/Device.hh>
+#include <yakpp/LockGuard.hh>
+#include <yio/Personality.hh>
+#include <yio/IoRegistry.hh>
+
+namespace yak::io
+{
 
 IO_OBJ_DEFINE(IoRegistry, Object);
-IO_OBJ_DEFINE_VIRTUAL(Personality, Object);
-IO_OBJ_DEFINE(TreeNode, Object);
-
 #define super Object
 
 void IoRegistry::init()
 {
 	super::init();
-	kmutex_init(&mutex_, "IoRegistry");
+	mutex_.init("IoRegistry");
 	TAILQ_INIT(&personalities_);
 	platform_expert.init();
 }
@@ -176,4 +177,6 @@ void IoRegistry::dumpTree()
 	printk(0, "=== IoRegistry Dump ===\n");
 	dump_level(&platform_expert, 0);
 	printk(0, "=== IoRegistry Dump end ===\n");
+}
+
 }

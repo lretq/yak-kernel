@@ -1,10 +1,13 @@
 #pragma once
 
-#include <cstddef>
-#include <yak/io/String.hh>
-#include <yak/io/base.hh>
-#include <yak/queue.h>
 #include <assert.h>
+#include <cstddef>
+#include <yak/queue.h>
+#include <yakpp/String.hh>
+#include <yakpp/Object.hh>
+
+namespace yak::io
+{
 
 struct TreeNode : public Object {
 	IO_OBJ_DECLARE(TreeNode);
@@ -55,3 +58,5 @@ struct TreeNode : public Object {
 
 	TAILQ_ENTRY(TreeNode) list_entry_;
 };
+
+}

@@ -3,18 +3,11 @@ add_executable(kernel)
 option(KERNEL_LTO "enable lto" OFF)
 
 if (KERNEL_LTO)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT supported OUTPUT error)
-
-    if( supported )
-	message(STATUS "IPO / LTO enabled")
-	set_property(TARGET kernel PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    else()
-	message(STATUS "IPO / LTO not supported: <${error}>")
-    endif()
+    set_property(TARGET kernel PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
 add_subdirectory(src)
+add_subdirectory(src-cpp)
 add_subdirectory(io)
 add_subdirectory(fs)
 

@@ -1,6 +1,9 @@
 #pragma once
 
-#include <yak/io/IoRegistry.hh>
+#include <yio/Personality.hh>
+
+namespace yak::io
+{
 
 class PciPersonality : public Personality {
 	IO_OBJ_DECLARE(PciPersonality);
@@ -58,3 +61,5 @@ class PciPersonality : public Personality {
 	long classCode = MATCH_ANY;
 	long subclass = MATCH_ANY;
 };
+
+}

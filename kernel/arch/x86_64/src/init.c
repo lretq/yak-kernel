@@ -6,7 +6,7 @@
 #include <yak/cpudata.h>
 #include <yak/cpu.h>
 #include <yak/log.h>
-#include <yak/io/console.h>
+#include <yak/console.h>
 #include <yak/macro.h>
 #include <yak/kernel-file.h>
 #include <yak/irq.h>

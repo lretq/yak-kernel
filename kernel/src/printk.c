@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
-#include <yak/io/console.h>
+#include <yak/console.h>
 #include <yak/spinlock.h>
 #include <yak/hint.h>
 #include <yak/cpudata.h>

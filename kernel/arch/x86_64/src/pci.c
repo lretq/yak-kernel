@@ -2,9 +2,9 @@
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>
 #include <yak/log.h>
-#include <yak/io/pci.h>
+#include <yio/pci.h>
 #include <yak/init.h>
-#include <yak/io/pci_ecam.h>
+#include <yio/pci_ecam.h>
 #include <assert.h>
 
 #include "asm.h"
@@ -44,7 +44,7 @@ static void pci_legacy_write([[maybe_unused]] uint32_t segment, uint32_t bus,
 	outl(LEGACY_PCI_CONFIG_DATA, value);
 }
 
-void plat_pci_init()
+void x86_pci_init()
 {
 	uacpi_table tbl;
 	int ret = uacpi_table_find_by_signature("MCFG", &tbl);
@@ -74,4 +74,4 @@ void plat_pci_init()
 
 INIT_ENTAILS(x86_pci_access, pci_access);
 INIT_DEPS(x86_pci_access, early_acpi_stage);
-INIT_NODE(x86_pci_access, plat_pci_init);
+INIT_NODE(x86_pci_access, x86_pci_init);

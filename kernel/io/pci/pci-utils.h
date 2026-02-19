@@ -5,7 +5,7 @@
 #endif
 
 #include <stdint.h>
-#include <yak/io/pci.h>
+#include <yio/pci.h>
 
 #define PCIARGS uint32_t segment, uint32_t bus, uint32_t slot, uint32_t function
 #define IPCIARGS segment, bus, slot, function

@@ -2,7 +2,7 @@
 #include <yak/hint.h>
 #include <yak/spinlock.h>
 #include <yak/queue.h>
-#include <yak/io/console.h>
+#include <yak/console.h>
 
 static SPINLOCK(sink_list_lock);
 static struct console_list sink_list = TAILQ_HEAD_INITIALIZER(sink_list);

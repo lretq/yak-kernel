@@ -2,7 +2,7 @@
 #include <yak/log.h>
 #include <yak/vm/map.h>
 #include <yak/types.h>
-#include <yak/io/pci.h>
+#include <yio/pci.h>
 
 #define MCFG_MAPPING_SIZE(buscount) (4096l * 8l * 32l * (buscount))
 

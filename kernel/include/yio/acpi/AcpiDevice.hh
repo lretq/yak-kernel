@@ -1,11 +1,12 @@
 #pragma once
 
-#include <yak/io/Device.hh>
-#include <yak/io/IoRegistry.hh>
-#include <yak/io/acpi/AcpiPersonality.hh>
-#include <yak/io/Array.hh>
+#include <yio/Device.hh>
+#include <yio/IoRegistry.hh>
+#include <yakpp/Array.hh>
 #include <uacpi/utilities.h>
-#include <yak/io/base.hh>
+
+namespace yak::io
+{
 
 struct AcpiDevice : public Device {
 	IO_OBJ_DECLARE(AcpiDevice);
@@ -25,3 +26,5 @@ struct AcpiDevice : public Device {
     private:
 	Array *personalities_ = nullptr;
 };
+
+}

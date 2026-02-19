@@ -2,7 +2,10 @@
 
 #include <cstddef>
 #include <string.h>
-#include <yak/io/base.hh>
+#include <yakpp/Object.hh>
+
+namespace yak
+{
 
 class String : public Object {
 	IO_OBJ_DECLARE(String);
@@ -74,3 +77,5 @@ class String : public Object {
 	char *data_ = nullptr;
 	size_t length_ = 0;
 };
+
+}

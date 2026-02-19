@@ -1,9 +1,11 @@
 #pragma once
 
 #include <yak/queue.h>
-#include <yak/io/base.hh>
-#include <yak/io/TreeNode.hh>
-#include <yak/io/Array.hh>
+#include <yio/TreeNode.hh>
+#include <yakpp/Array.hh>
+
+namespace yak::io
+{
 
 struct Personality;
 
@@ -37,3 +39,5 @@ class PlatformExpert : public Device {
 	void early_start();
 	bool start(Device *provider) override;
 };
+
+}

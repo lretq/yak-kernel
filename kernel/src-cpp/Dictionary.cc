@@ -1,7 +1,8 @@
-#include <yak/io/Dictionary.hh>
-#include <yak/macro.h>
-#include <assert.h>
-#include <yak/log.h>
+#include <yakpp/Dictionary.hh>
+#include <algorithm>
+
+namespace yak
+{
 
 IO_OBJ_DEFINE(Dictionary, Object);
 #define super Object
@@ -27,9 +28,7 @@ void Dictionary::resize(size_t new_size)
 	if (new_size > 0) {
 		new_entries = new Entry[new_size];
 
-		pr_info("allocated entries at %p\n", new_entries);
-
-		size_t copy_count = MIN(count, new_size);
+		size_t copy_count = std::min(count, new_size);
 		if (entries && copy_count > 0)
 			memcpy(new_entries, entries,
 			       sizeof(Entry) * copy_count);
@@ -126,4 +125,6 @@ void Dictionary::deinit()
 {
 	resize(0);
 	super::deinit();
+}
+
 }

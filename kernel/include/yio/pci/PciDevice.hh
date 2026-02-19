@@ -1,8 +1,11 @@
 #pragma once
 
 #include <yak/queue.h>
-#include <yak/io/pci/PciPersonality.hh>
-#include <yak/io/pci/Pci.hh>
+#include <yio/pci/PciPersonality.hh>
+#include <yio/pci/Pci.hh>
+
+namespace yak::io
+{
 
 struct PciDevice : public Device {
 	IO_OBJ_DECLARE(PciDevice);
@@ -19,3 +22,5 @@ struct PciDevice : public Device {
 	PciPersonality personality;
 	PciCoordinates coords;
 };
+
+}

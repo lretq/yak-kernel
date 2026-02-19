@@ -1,15 +1,19 @@
 #include <stdint.h>
 #include <nanoprintf.h>
-#include <yak/io/pci.h>
-#include <yak/io/pci/Pci.hh>
+#include <yio/pci.h>
+#include <yio/pci/Pci.hh>
 #include <yak/log.h>
-#include <yak/io/pci/PciBus.hh>
-#include <yak/io/pci/PciDevice.hh>
+#include <yio/pci/PciBus.hh>
+#include <yio/pci/PciDevice.hh>
 
 #define PCI_UTILS
 #include "pci-utils.h"
 
+namespace yak::io
+{
+
 IO_OBJ_DEFINE(PciDevice, Device);
+#define super Device
 
 void PciDevice::init()
 {
@@ -39,4 +43,6 @@ void PciDevice::initWithPci(uint32_t segment, uint32_t bus, uint32_t slot,
 Personality *PciDevice::getPersonality()
 {
 	return &personality;
+}
+
 }

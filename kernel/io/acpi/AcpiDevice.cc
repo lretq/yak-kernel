@@ -1,12 +1,16 @@
 #include <yak/log.h>
 #include <uacpi/utilities.h>
-#include <yak/io/Array.hh>
-#include <yak/io/base.hh>
-#include <yak/io/Device.hh>
-#include <yak/io/IoRegistry.hh>
-#include <yak/io/acpi/AcpiDevice.hh>
+#include <yakpp/Array.hh>
+#include <yio/Device.hh>
+#include <yakpp/Object.hh>
+#include <yio/IoRegistry.hh>
+#include <yio/acpi/AcpiDevice.hh>
+#include <yio/acpi/AcpiPersonality.hh>
 #include <uacpi/resources.h>
 #include <nanoprintf.h>
+
+namespace yak::io
+{
 
 IO_OBJ_DEFINE(AcpiDevice, Device);
 #define super Device
@@ -64,4 +68,6 @@ void AcpiDevice::init()
 Array *AcpiDevice::getPersonalities()
 {
 	return personalities_;
+}
+
 }
