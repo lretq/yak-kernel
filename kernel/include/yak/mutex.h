@@ -13,7 +13,7 @@ extern "C" {
 
 struct kmutex {
 	struct kevent event;
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 	// for debugging purposes
 	const char *name;
 #endif

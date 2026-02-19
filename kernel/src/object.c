@@ -4,40 +4,45 @@
 #include <yak/queue.h>
 #include <yak/object.h>
 
-void kobject_init(struct kobject_header *hdr, int signalstate)
+void kobject_init(struct kobject *hdr, int signalstate,
+		  enum kobject_type type)
 {
 	spinlock_init(&hdr->obj_lock);
-	hdr->signalstate = signalstate;
-	hdr->waitcount = 0;
-	TAILQ_INIT(&hdr->wait_list);
+	hdr->obj_type = type;
+	hdr->obj_signal_count = signalstate;
+	hdr->obj_wait_count = 0;
+	TAILQ_INIT(&hdr->obj_wait_list);
 }
 
-int kobject_signal_locked(struct kobject_header *hdr, int unblock_all)
+int kobject_signal_locked(struct kobject *hdr, bool unblock_all)
 {
 	assert(spinlock_held(&hdr->obj_lock));
 	struct wait_block *wb;
 
-	size_t unblocked = 0;
+	int unblocked = 0;
 
-	while (hdr->waitcount) {
-		wb = TAILQ_FIRST(&hdr->wait_list);
-#if 0
-		if (!wb) {
-			pr_warn("object (%p) has no entries but waitcount >0\n",
-				hdr);
-			hdr->waitcount = 0;
-			break;
-		}
-#else
+	while (hdr->obj_wait_count) {
+		wb = TAILQ_FIRST(&hdr->obj_wait_list);
 		assert(wb);
-#endif
-		TAILQ_REMOVE(&hdr->wait_list, wb, entry);
-
-		hdr->waitcount -= 1;
 
 		struct kthread *thread = wb->thread;
+
 		spinlock_lock_noipl(&thread->thread_lock);
-		sched_wake_thread(thread, wb->status);
+
+		wb->flags |= WB_DEQUEUED;
+
+		TAILQ_REMOVE(&hdr->obj_wait_list, wb, entry);
+
+		hdr->obj_wait_count -= 1;
+
+		if (wb->flags & WB_UNWAITED) {
+			// already unwaited elsewhere
+			spinlock_unlock_noipl(&thread->thread_lock);
+			continue;
+		}
+
+		thread_unwait(thread, wb->status);
+
 		spinlock_unlock_noipl(&thread->thread_lock);
 
 		if (!unblock_all) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <yak/hint.h>
 #include <yak/cleanup.h>
 
 typedef size_t refcount_t;
@@ -10,13 +11,11 @@ typedef size_t refcount_t;
 	void type##_deref(struct type *p);
 
 #define GENERATE_REFMAINT_INTERNAL(fn_attr, field, type, destructor)           \
-	[[gnu::used]]                                                          \
-	__no_san fn_attr void type##_ref(struct type *p)                       \
+	__used __no_san fn_attr void type##_ref(struct type *p)                       \
 	{                                                                      \
 		__atomic_fetch_add(&p->field, 1, __ATOMIC_ACQUIRE);            \
 	}                                                                      \
-	[[gnu::used]]                                                          \
-	__no_san fn_attr void type##_deref(struct type *p)                     \
+	__used __no_san fn_attr void type##_deref(struct type *p)                     \
 	{                                                                      \
 		if (__atomic_fetch_sub(&p->field, 1, __ATOMIC_ACQ_REL) == 1) { \
 			destructor(p);                                         \

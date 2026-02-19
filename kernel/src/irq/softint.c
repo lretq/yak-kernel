@@ -15,7 +15,7 @@ static void softint_ack(struct cpu *cpu, ipl_t ipl)
 static void do_dpc_int(struct cpu *cpu)
 {
 	softint_ack(cpu, IPL_DPC);
-	setipl(IPL_DPC);
+	ripl(IPL_DPC);
 
 	enable_interrupts();
 
@@ -39,12 +39,12 @@ void softint_dispatch(ipl_t ipl)
 
 	struct cpu *cpu = curcpu_ptr();
 
-	while (cpu->softint_pending & (0xFF << ipl)) {
+	while (cpu->softint_pending & (0xFFFF << ipl)) {
 		softint_handlers[31 - __builtin_clz(cpu->softint_pending)](cpu);
 		cpu = curcpu_ptr();
 	}
 
-	setipl(ipl);
+	xipl(ipl);
 
 	if (state)
 		enable_interrupts();

@@ -54,6 +54,7 @@ static inline void serial_flush()
 size_t serial_write([[maybe_unused]] struct console *console, const char *str,
 		    size_t len)
 {
+	//return len;
 	int state = disable_interrupts();
 	for (size_t i = 0; i < len; i++) {
 		serial_buf[serial_pos++] = str[i];
@@ -84,18 +85,30 @@ struct cpu percpu_cpudata = {};
 
 extern char __init_stack_top[];
 
-__no_san void plat_syscall_handler(struct syscall_frame *frame)
+void syscall_log(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3,
+		 uintptr_t arg4, uintptr_t arg5, uintptr_t arg6);
+
+__no_san __used void plat_syscall_handler(struct syscall_frame *frame)
 {
 	if (frame->rax >= MAX_SYSCALLS) {
 		pr_error("request syscall >= MAX_SYSCALLS\n");
 		return;
 	}
 
+#if CONFIG_SYSCALL_LOG
+	syscall_log(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10,
+		    frame->r8, frame->r9);
+#endif
+
 	struct syscall_result res = syscall_table[frame->rax](
 		frame, frame->rdi, frame->rsi, frame->rdx, frame->r10,
 		frame->r8, frame->r9);
+	if (res.err != 0) {
+		pr_debug("syscall error: %ld (with error %ld)\n", frame->rax,
+			 res.err);
+	}
 	frame->rax = res.retval;
-	frame->rdx = res.errno;
+	frame->rdx = res.err;
 }
 
 // XXX: move this to a seperate .S file!
@@ -166,37 +179,6 @@ void _syscall_entry()
 		:);
 }
 
-[[gnu::naked]]
-void _syscall_fork_return()
-{
-	asm volatile(
-		//
-		"add $8, %%rsp\n\t"
-		"pop %%rax\n\t"
-		"pop %%rbx\n\t"
-		"pop %%rcx\n\t"
-		"pop %%rdx\n\t"
-		"pop %%rdi\n\t"
-		"pop %%rsi\n\t"
-		"pop %%r8\n\t"
-		"pop %%r9\n\t"
-		"pop %%r10\n\t"
-		"pop %%r11\n\t"
-		"pop %%r12\n\t"
-		"pop %%r13\n\t"
-		"pop %%r14\n\t"
-		"pop %%r15\n\t"
-		"pop %%rbp\n\t"
-
-		// cli now, we're switching to user rsp & gsbase again
-		"cli\n\t"
-		"pop %%rsp\n\t"
-		"swapgs\n\t"
-
-		"sysretq\n\t" ::
-			:);
-}
-
 static void setup_syscall_msrs()
 {
 	uint64_t efer = rdmsr(MSR_EFER);
@@ -220,13 +202,17 @@ static void setup_cpu()
 	gdt_init();
 	// load our gdt
 	gdt_reload();
+
+	write_cr8(0);
 }
 
 void init_early_output()
 {
 	// XXX: We may want to check for port e9?
 	console_register(&com1_console);
+#if CONFIG_SERIAL
 	sink_add(&com1_console);
+#endif
 }
 
 void init_bsp_cpudata()
@@ -248,22 +234,10 @@ void init_bsp_cpudata()
 void apic_global_init();
 void lapic_enable();
 
-static struct irq_object ipi_obj;
-size_t ipi_vector;
-
-int ipi_handler([[maybe_unused]] void *context)
-{
-	return IRQ_ACK;
-}
-
 void timer_setup()
 {
 	extern status_t hpet_setup();
 	EXPECT(hpet_setup());
-
-	irq_object_init(&ipi_obj, ipi_handler, NULL);
-	irq_alloc_ipl(&ipi_obj, IPL_HIGH, 0, PIN_CONFIG_ANY);
-	ipi_vector = VEC_TO_IRQ(ipi_obj.slot->vector);
 
 	apic_global_init();
 	lapic_enable();
@@ -271,6 +245,27 @@ void timer_setup()
 INIT_ENTAILS(x86_timer_setup, bsp_ready);
 INIT_DEPS(x86_timer_setup, early_io_stage);
 INIT_NODE(x86_timer_setup, timer_setup);
+
+static struct irq_object ipi_obj;
+size_t ipi_vector;
+
+void ipi_handler();
+
+static int arch_ipi_handler([[maybe_unused]] void *context)
+{
+	ipi_handler();
+	return IRQ_ACK;
+}
+
+void ipi_setup()
+{
+	irq_object_init(&ipi_obj, arch_ipi_handler, NULL);
+	irq_alloc_ipl(&ipi_obj, IPL_HIGH, 0, PIN_CONFIG_ANY);
+	ipi_vector = VEC_TO_IRQ(ipi_obj.slot->vector);
+}
+INIT_ENTAILS(x86_ipi_setup, bsp_ready);
+INIT_DEPS(x86_ipi_setup, x86_timer_setup);
+INIT_NODE(x86_ipi_setup, ipi_setup);
 
 #include <limine.h>
 
@@ -281,7 +276,7 @@ LIMINE_REQ struct limine_mp_request mp_request = {
 
 // TODO: Do the SMP startup ourselves
 
-struct extra_info {
+struct [[gnu::aligned(64)]] extra_info {
 	uintptr_t cr3;
 	void *stack_top;
 	int done;
@@ -298,12 +293,14 @@ static void c_ap_entry(struct limine_mp_info *info)
 
 	wrmsr(MSR_GSBASE, extra->percpu_offset);
 
-	vm_map_activate(kmap());
+	pmap_activate(&kmap()->pmap);
 
 	struct cpu *cpudata = (struct cpu *)((uintptr_t)&percpu_cpudata +
 					     extra->percpu_offset);
 
 	cpudata_init(cpudata, (void *)extra->stack_top);
+
+	vm_map_activate(kmap());
 
 	setup_cpu();
 	fpu_ap_init();
@@ -337,7 +334,17 @@ static void naked_ap_entry(struct limine_mp_info *info)
 		     : "memory");
 }
 
-static struct extra_info extra;
+static struct extra_info all_ap_info_structs[MAX_NR_CPUS] = { 0 };
+
+void wait_for_all(size_t max_cpu)
+{
+	for (size_t i = 0; i < max_cpu; i++) {
+		while (__atomic_load_n(&all_ap_info_structs[i].done,
+				       __ATOMIC_RELAXED) != 1) {
+			asm volatile("pause" ::: "memory");
+		}
+	}
+}
 
 void start_aps()
 {
@@ -345,40 +352,44 @@ void start_aps()
 
 	struct limine_mp_response *response = mp_request.response;
 
-	__all_cpus = kcalloc(response->cpu_count, sizeof(struct cpu *));
+	size_t cpu_count = response->cpu_count;
 
-	for (size_t i = 0; i < response->cpu_count; i++) {
-		struct limine_mp_info *info = response->cpus[i];
+	__all_cpus = kcalloc(cpu_count, sizeof(struct cpu *));
+	__all_cpus[curcpu().cpu_id] = curcpu_ptr();
+
+	paddr_t kernel_cr3 = read_cr3();
+
+	size_t percpu_size = (uintptr_t)__kernel_percpu_end -
+			     (uintptr_t)__kernel_percpu_start;
+
+	for (size_t cpu = 0; cpu < cpu_count; cpu++) {
+		struct limine_mp_info *info = response->cpus[cpu];
 
 		if (info->lapic_id == curcpu().md.apic_id)
 			continue;
 
-		extra.cr3 = read_cr3();
-		extra.done = 0;
-		extra.stack_top =
-			(void *)((vaddr_t)vm_kalloc(KSTACK_SIZE, VM_SLEEP) +
-				 KSTACK_SIZE);
+		struct extra_info *extra_arg = &all_ap_info_structs[cpu];
 
-		size_t percpu_size = (uintptr_t)__kernel_percpu_end -
-				     (uintptr_t)__kernel_percpu_start;
+		void *stack = vm_kalloc(KSTACK_SIZE, VM_SLEEP);
+		void *stack_top = (void *)((vaddr_t)stack + KSTACK_SIZE);
 
 		vaddr_t percpu_area = (vaddr_t)vm_kalloc(
 			ALIGN_UP(percpu_size, PAGE_SIZE), VM_SLEEP);
 
 		pr_debug("percpu_area: %lx\n", percpu_area);
 
-		extra.percpu_offset =
+		extra_arg->cr3 = kernel_cr3;
+		extra_arg->done = 0;
+		extra_arg->stack_top = stack_top;
+		extra_arg->percpu_offset =
 			percpu_area - (uintptr_t)__kernel_percpu_start;
 
-		info->extra_argument = (uint64_t)&extra;
+		info->extra_argument = (uint64_t)extra_arg;
 		info->goto_address = naked_ap_entry;
-
-		while (__atomic_load_n(&extra.done, __ATOMIC_RELAXED) != 1) {
-			asm volatile("pause" ::: "memory");
-		}
 	}
 
-	__all_cpus[curcpu().cpu_id] = curcpu_ptr();
+	all_ap_info_structs[curcpu().cpu_id].done = 1;
+	wait_for_all(cpu_count);
 
 	enable_interrupts();
 }

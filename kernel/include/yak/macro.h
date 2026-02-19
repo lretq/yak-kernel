@@ -66,3 +66,11 @@ static inline uintptr_t next_ilog2(uintptr_t number)
 	return num <= 1 ? 1 : (32 - __builtin_clzll(num - 1));
 }
 #endif
+
+#define CHECKED_CAST(src_expr, src_type, dst_type)                            \
+	({                                                                    \
+		_Static_assert(__builtin_types_compatible_p(typeof(src_expr), \
+							    src_type),        \
+			       "checked cast: wrong source type");            \
+		(dst_type)(src_expr);                                         \
+	})

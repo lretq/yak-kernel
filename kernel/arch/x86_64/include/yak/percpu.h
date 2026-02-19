@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-#define __percpu [[gnu::section(".percpu")]] __seg_gs
+#define __percpu __attribute__((section(".percpu"))) __seg_gs
 
 #ifdef __cplusplus
 }

@@ -19,6 +19,9 @@ extern "C" {
 #include <yak-private/profiler.h>
 #endif
 
+#define KTHREAD_MAX_NAME_LEN 32
+#define KTHREAD_INLINE_WAIT_BLOCKS 4
+
 enum {
 	SCHED_PRIO_IDLE = 0,
 	SCHED_PRIO_TIME_SHARE = 1, /* 1-16 */
@@ -28,33 +31,8 @@ enum {
 	SCHED_PRIO_MAX = 32,
 };
 
-struct wait_block {
-	// thread waiting
-	struct kthread *thread;
-	// object being waited on
-	void *object;
-	// status to set in the thread for WAIT_TYPE_ANY
-	status_t status;
-	// for inserting into object wait list
-	TAILQ_ENTRY(wait_block) entry;
-};
-
-enum {
-	/* unblock when any object is ready */
-	WAIT_TYPE_ANY = 1,
-	/* unblock when all objects are ready */
-	WAIT_TYPE_ALL = 2,
-};
-
-enum {
-	WAIT_MODE_BLOCK = 1,
-	WAIT_MODE_POLL,
-};
-
-#define KTHREAD_INLINE_WAIT_BLOCKS 4
-
 // current/soon-to-be state
-enum {
+enum thread_state {
 	// enqueued
 	THREAD_READY = 1,
 	// off-list, active
@@ -71,7 +49,18 @@ enum {
 	THREAD_UNDEFINED,
 };
 
-#define KTHREAD_MAX_NAME_LEN 32
+// This solution comes from microsoft's channel9:
+// "Inside Windows 7: Arun Kishan - Farewell to the Windows Kernel Dispatcher Lock"
+enum wait_phase {
+	WAIT_PHASE_NONE,
+	// Thread setting up wait logic
+	WAIT_PHASE_IN_PROGRESS,
+	// Thread comitted to waiting
+	WAIT_PHASE_COMITTED,
+	// Wait was aborted, for example by an object
+	// that was signaled in the middle of IN_PROGRESS
+	WAIT_PHASE_ABORTED,
+};
 
 struct kthread {
 	struct md_pcb pcb;
@@ -84,11 +73,15 @@ struct kthread {
 
 	void *kstack_top;
 
-	int user_thread;
+	bool user_thread;
+
+	struct wait_block *wait_blocks;
+	size_t wait_blocks_count;
 
 	struct wait_block inline_wait_blocks[KTHREAD_INLINE_WAIT_BLOCKS];
-	struct wait_block *wait_blocks;
-	unsigned int wait_type;
+
+	unsigned short wait_phase;
+
 	status_t wait_status;
 
 	struct wait_block timeout_wait_block;
@@ -111,14 +104,14 @@ struct kthread {
 #endif
 
 	LIST_ENTRY(kthread) process_entry;
-	TAILQ_ENTRY(kthread) rq_entry;
+	TAILQ_ENTRY(kthread) queue_entry;
 };
 
 typedef TAILQ_HEAD(thread_queue, kthread) thread_queue_t;
 
 void kthread_init(struct kthread *thread, const char *name,
 		  unsigned int initial_priority, struct kprocess *process,
-		  int user_thread);
+		  bool user_thread);
 
 status_t kernel_thread_create(const char *name, unsigned int priority,
 			      void *entry, void *context, int instant_launch,
@@ -136,8 +129,8 @@ void kthread_context_copy(const struct kthread *source_thread,
 void kernel_enter_userspace(uint64_t ip, uint64_t sp);
 
 struct runqueue {
-	uint32_t mask;
-	thread_queue_t queue[SCHED_PRIO_MAX];
+	uint32_t ready_mask;
+	thread_queue_t queues[SCHED_PRIO_MAX + 1];
 };
 
 struct sched {
@@ -164,10 +157,11 @@ void sched_exit_self();
 
 void sched_yield(struct kthread *current, struct cpu *cpu);
 
-void sched_wake_thread(struct kthread *thread, status_t status);
+void thread_unwait(struct kthread *thread, status_t status);
 
-status_t launch_elf(struct kprocess *proc, char *path, int priority,
-		    char **argv, char **envp);
+status_t launch_elf(struct kprocess *proc, struct vm_map *map, char *path,
+		    int priority, char **argv, char **envp,
+		    struct kthread **thread_out);
 
 #ifdef __cplusplus
 }

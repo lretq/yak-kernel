@@ -5,7 +5,7 @@
 
 void semaphore_init(struct semaphore *sem, int sigstate)
 {
-	kobject_init(&sem->hdr, sigstate);
+	kobject_init(&sem->hdr, sigstate, OBJ_SYNC);
 }
 
 void semaphore_signal(struct semaphore *sem)
@@ -14,7 +14,7 @@ void semaphore_signal(struct semaphore *sem)
 
 	if (0 == kobject_signal_locked(&sem->hdr, 0)) {
 		// no one to be woken
-		sem->hdr.signalstate += 1;
+		sem->hdr.obj_signal_count += 1;
 	}
 
 	spinlock_unlock(&sem->hdr.obj_lock, ipl);
@@ -23,5 +23,5 @@ void semaphore_signal(struct semaphore *sem)
 
 void semaphore_reset(struct semaphore *sem)
 {
-	sem->hdr.signalstate = 0;
+	sem->hdr.obj_signal_count = 0;
 }

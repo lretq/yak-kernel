@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <limine.h>
+#include <string.h>
 #include <nanoprintf.h>
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
@@ -32,9 +33,15 @@ struct flanterm_context *kinfo_flanterm_context = NULL;
 #define KINFO_MARGIN 5
 #define KINFO_HEIGHT(fontscale) (16 * 3 * fontscale + KINFO_MARGIN * 2)
 
+struct limine_framebuffer limine_fb0_copy;
 size_t kinfo_height_start;
 
 static struct console *user_console = NULL;
+
+void console_backend_winsize(struct winsize *ws)
+{
+	memcpy(ws, &user_console->native_winsize, sizeof(struct winsize));
+}
 
 void console_backend_write(const void *buf, size_t length)
 {
@@ -56,10 +63,16 @@ void limine_fb_setup()
 
 	struct limine_framebuffer_response *res = fb_request.response;
 
-	if (res->framebuffer_count < 0)
+	// No framebuffers to setup
+	if (0 == res->framebuffer_count)
 		return;
 
 	fb_consoles = kcalloc(res->framebuffer_count, sizeof(struct console));
+
+	// for fireworks test
+	// after reclaiming memory, this would be gone!
+	memcpy(&limine_fb0_copy, res->framebuffers[0],
+	       sizeof(struct limine_framebuffer));
 
 	for (size_t i = 0; i < res->framebuffer_count; i++) {
 		struct limine_framebuffer *fb = res->framebuffers[i];
@@ -71,23 +84,34 @@ void limine_fb_setup()
 
 		console->write = fb_write;
 
+		size_t font_scale_x = 1, font_scale_y = 1;
+
+		if (fb->width >= (1920 + 1920 / 3) &&
+		    fb->height >= (1080 + 1080 / 3)) {
+			font_scale_x = 2;
+			font_scale_y = 2;
+		}
+		if (fb->width >= (3840 + 3840 / 3) &&
+		    fb->height >= (2160 + 2160 / 3)) {
+			font_scale_x = 4;
+			font_scale_y = 4;
+		}
+
+		struct winsize ws;
+		ws.ws_xpixel = fb->width;
+		ws.ws_ypixel = fb->height;
+		int char_w = 8 * font_scale_x;
+		int char_h = 16 * font_scale_y;
+		ws.ws_col = fb->width / char_w;
+		ws.ws_row = fb->height / char_h;
+
 		if (!kinfo_flanterm_context) {
-			size_t font_scale_x = 1, font_scale_y = 1;
-
-			if (fb->width >= (1920 + 1920 / 3) &&
-			    fb->height >= (1080 + 1080 / 3)) {
-				font_scale_x = 2;
-				font_scale_y = 2;
-			}
-			if (fb->width >= (3840 + 3840 / 3) &&
-			    fb->height >= (2160 + 2160 / 3)) {
-				font_scale_x = 4;
-				font_scale_y = 4;
-			}
-
 			size_t kinfo_height = KINFO_HEIGHT(font_scale_y);
 
 			kinfo_height_start = fb->height - kinfo_height;
+
+			ws.ws_ypixel = kinfo_height_start;
+			ws.ws_row = kinfo_height_start / char_h;
 
 			console->private = flanterm_fb_init(
 				kmalloc, kfree, fb->address, fb->width,
@@ -122,6 +146,8 @@ void limine_fb_setup()
 				fb->blue_mask_shift, NULL, NULL, NULL, NULL,
 				NULL, NULL, NULL, NULL, 0, 0, 1, 0, 0, 0);
 		}
+
+		console->native_winsize = ws;
 
 		console_register(console);
 		sink_add(console);

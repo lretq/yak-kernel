@@ -29,9 +29,8 @@
 #ifndef _SYS_TREE_H_
 #define _SYS_TREE_H_
 
-#define __unused [[maybe_unused]]
-
 #include <stddef.h>
+#include <yak/hint.h>
 
 /*
  * This file defines data structures for different types of trees:

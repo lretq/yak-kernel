@@ -1,10 +1,10 @@
-#include "yak/hint.h"
-#include "yak/log.h"
 #include <cstddef>
+#include <assert.h>
+#include <new>
 #include <yak/heap.h>
 #include <yak/panic.h>
 #include <yak/macro.h>
-#include <assert.h>
+#include <yak/hint.h>
 
 extern "C" {
 void *__dso_handle = &__dso_handle;
@@ -24,27 +24,38 @@ void __cxa_atexit()
 }
 }
 
-void *operator new(std::size_t size)
-{
-	return kmalloc(size);
-}
+[[nodiscard]] void *operator new(std::size_t size) { return kmalloc(size); }
+[[nodiscard]] void *operator new(std::size_t size, const std::nothrow_t &) noexcept { return kmalloc(size); }
 
-void operator delete(void *ptr) noexcept
-{
-	kfree(ptr, 0);
-}
+[[nodiscard]] void *operator new(std::size_t size, std::align_val_t) { return kmalloc(size); }
+[[nodiscard]] void *operator new(std::size_t size, std::align_val_t, const std::nothrow_t &) noexcept { return kmalloc(size); }
 
-void operator delete(void *ptr, [[maybe_unused]] size_t size) noexcept
-{
-	kfree(ptr, 0);
-}
+[[nodiscard]] void *operator new[](std::size_t size) { return kmalloc(size); }
+[[nodiscard]] void *operator new[](std::size_t size, const std::nothrow_t &) noexcept { return kmalloc(size); }
 
-void *operator new[](size_t size)
-{
-	return kmalloc(size);
-}
+[[nodiscard]] void *operator new[](std::size_t size, std::align_val_t) { return kmalloc(size); }
+[[nodiscard]] void *operator new[](std::size_t size, std::align_val_t, const std::nothrow_t &) noexcept { return kmalloc(size); }
 
-void operator delete[](void *ptr)
-{
-	kfree(ptr, 0);
-}
+void operator delete(void *ptr) noexcept { kfree(ptr, 0); }
+void operator delete(void *ptr, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete(void *ptr, std::align_val_t) noexcept { kfree(ptr, 0); }
+void operator delete(void *ptr, std::align_val_t, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete(void *ptr, std::size_t) noexcept { kfree(ptr, 0); }
+void operator delete(void *ptr, std::size_t, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete(void *ptr, std::size_t, std::align_val_t) noexcept { kfree(ptr, 0); }
+void operator delete(void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete[](void *ptr) noexcept { kfree(ptr, 0); }
+void operator delete[](void *ptr, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete[](void *ptr, std::align_val_t) noexcept { kfree(ptr, 0); }
+void operator delete[](void *ptr, std::align_val_t, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete[](void *ptr, std::size_t) noexcept { kfree(ptr, 0); }
+void operator delete[](void *ptr, std::size_t, const std::nothrow_t &) noexcept { kfree(ptr, 0); }
+
+void operator delete[](void *ptr, std::size_t, std::align_val_t) noexcept { kfree(ptr, 0); }
+void operator delete[](void *ptr, std::size_t, std::align_val_t, const std::nothrow_t &) noexcept { kfree(ptr, 0); }

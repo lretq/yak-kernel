@@ -23,8 +23,6 @@ static void vm_anon_free(struct vm_anon *anon)
 
 struct vm_anon *vm_anon_create(struct page *page, voff_t offset)
 {
-	page_ref(page);
-
 	struct vm_anon *anon = kmalloc(sizeof(struct vm_anon));
 	memset(anon, 0, sizeof(struct vm_anon));
 

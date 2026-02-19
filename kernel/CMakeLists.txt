@@ -1,62 +1,65 @@
 add_executable(kernel)
 
+option(KERNEL_LTO "enable lto" OFF)
+
+if (KERNEL_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT supported OUTPUT error)
+
+    if( supported )
+	message(STATUS "IPO / LTO enabled")
+	set_property(TARGET kernel PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+	message(STATUS "IPO / LTO not supported: <${error}>")
+    endif()
+endif()
+
 add_subdirectory(src)
 add_subdirectory(io)
 add_subdirectory(fs)
 
-add_subdirectory(arch/generic-limine)
-add_subdirectory(arch/x86_64)
+if (YAK_ARCH STREQUAL x86_64)
+    add_subdirectory(arch/generic-limine)
+endif()
+add_subdirectory(arch/${YAK_ARCH})
 
 yak_add_includes(
     include
-    arch/x86_64/include
+    arch/${YAK_ARCH}/include
 )
 
-target_compile_options(kernel
-    PRIVATE -fstack-protector-strong
-    PRIVATE -fstack-check
-    PRIVATE -mstack-protector-guard=global
+target_compile_options(kernel PRIVATE
+	-fstack-protector-strong
+	-fstack-check
+	-mstack-protector-guard=global
 )
 
-target_compile_options(kernel
-    PRIVATE $<$<CONFIG:DEBUG>:-fsanitize=undefined>
+target_compile_options(kernel PRIVATE
+	$<$<CONFIG:DEBUG>:-fsanitize=undefined>
 )
 
-target_compile_options(kernel
-    PRIVATE -fpie
-    PRIVATE -fno-pic
-    PRIVATE -ffreestanding
-    PRIVATE -nostdinc
-    PRIVATE -fno-omit-frame-pointer
-    PRIVATE -fno-strict-aliasing
-    PRIVATE -fstrict-vtable-pointers
-    PRIVATE -mgeneral-regs-only
-    PRIVATE -Wall
-    PRIVATE -Wextra
-    PRIVATE -Wno-parentheses-equality
-    PRIVATE -ffunction-sections
-    PRIVATE -fdata-sections
-    PRIVATE -pipe
-    PRIVATE -fno-threadsafe-statics
-    PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
-    PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
-    #PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fsized-deallocation>
-    PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fcheck-new>
+target_compile_options(kernel PRIVATE
+     -fpie
+     -fno-pic
+     -mcmodel=kernel
+     -Wall
+     -Wextra
 )
 
 target_link_options(kernel
-    PRIVATE -nostdlib
     PRIVATE -T${CMAKE_CURRENT_LIST_DIR}/arch/x86_64/linker.lds
     PRIVATE -static
-    PRIVATE -Wl,-zmax-page-size=0x1000
-    PRIVATE -Wl,--gc-sections
 )
 
 target_compile_definitions(kernel 
     PUBLIC
 	__KERNEL__
-	x86_64
-	ARCH="x86_64"
+	${YAK_ARCH}
+	ARCH_STR="${YAK_ARCH}"
+
+	CONFIG_LAZY_IPL=0
+	CONFIG_SERIAL=1
+	CONFIG_SYSCALL_LOG=1
 	CONFIG_DEBUG=1
 	CONFIG_UBSAN=1
 

@@ -81,6 +81,8 @@ void kfree(void *ptr, size_t size)
 	alloc_meta_t *meta =
 		(alloc_meta_t *)((uintptr_t)ptr - sizeof(alloc_meta_t));
 
+	memset(ptr, 0xCC, size);
+
 	if (size != 0) {
 		size = size + sizeof(alloc_meta_t);
 		if (size > KMALLOC_MAX)

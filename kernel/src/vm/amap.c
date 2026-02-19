@@ -210,43 +210,20 @@ struct vm_amap *vm_amap_copy(struct vm_amap *amap)
 	return new_amap;
 }
 
-static struct vm_anon *vm_amap_fill_locked(struct vm_amap *amap, voff_t offset,
-					   struct page **ppage,
-					   unsigned int flags)
+struct vm_anon *vm_amap_fill_locked(struct vm_amap *amap, voff_t offset,
+				    struct page *backing_page,
+				    unsigned int flags)
 {
-	struct page *page = NULL;
-	if (IS_ERR(vm_lookuppage(amap->obj, offset, 0, &page))) {
-		// object does not contain offset
-		// -> fault should fail with SIGSEGV or some kind of OOB?
-		pr_error("lookuppage returned an error\n");
-		*ppage = NULL;
-		return NULL;
-	}
-
 	// create l3/l2/l1 if needed, amap already locked
 	struct vm_anon **panon =
 		vm_amap_lookup(amap, offset, VM_AMAP_CREATE | VM_AMAP_LOCKED);
+	assert(*panon == NULL);
 
-	// someone else was faster!
-	if (*panon != NULL) {
-		struct vm_anon *anon = *panon;
-		// TODO: what if we page out?
-		assert(anon->page == page);
-		*ppage = anon->page;
-		return anon;
-	}
+	struct page *dest_page = vm_pagealloc(NULL, 0);
 
-	*panon = vm_anon_create(page, offset);
-	*ppage = page;
+	memcpy((void *)page_to_mapped_addr(dest_page),
+	       (const void *)page_to_mapped_addr(backing_page), PAGE_SIZE);
+
+	*panon = vm_anon_create(dest_page, 0);
 	return *panon;
-}
-
-struct vm_anon *vm_amap_fill(struct vm_amap *amap, voff_t offset,
-			     struct page **ppage, unsigned int flags)
-{
-	if (flags & VM_AMAP_LOCKED)
-		return vm_amap_fill_locked(amap, offset, ppage, flags);
-
-	guard(mutex)(&amap->lock);
-	return vm_amap_fill_locked(amap, offset, ppage, flags);
 }

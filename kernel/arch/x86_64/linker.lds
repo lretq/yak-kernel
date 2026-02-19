@@ -71,10 +71,13 @@ SECTIONS
         *(.data .data.*)
     } :data
 
-    .init_node : {
+    .init_node ALIGN(8) : {
     	PROVIDE_HIDDEN(__kernel_init_node_start = .);
     	KEEP(*(.init_node .init_node.*))
-	PROVIDE_HIDDEN(__kernel_init_node_end = .);
+    	PROVIDE_HIDDEN(__kernel_init_node_end = .);
+    } :data
+
+    .init_stage ALIGN(8) : {
     	PROVIDE_HIDDEN(__kernel_init_stage_start = .);
     	KEEP(*(.init_stage .init_stage.*))
 	PROVIDE_HIDDEN(__kernel_init_stage_end = .);

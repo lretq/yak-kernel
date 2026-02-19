@@ -1,0 +1,14 @@
+yak_add_sources(
+	anon.c
+	aobj.c
+	amap.c
+	fault.c
+	generic_pmap.c
+	heap.c
+	map.c
+	object.c
+	page.c
+	pmm.c
+	vmem.c
+	kmem_slab.c
+)

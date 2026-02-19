@@ -12,6 +12,10 @@
 #include <yak/io/console.h>
 #include <yak/vm/map.h>
 #include <yak/fs/vfs.h>
+#include <yak/ipi.h>
+#include <yak/status.h>
+#include <yak/timer.h>
+#include <yak/wait.h>
 
 #include <config.h>
 
@@ -28,6 +32,11 @@ extern func_ptr __init_array_end[];
 INIT_STAGE(bsp_ready);
 INIT_STAGE(heap_ready);
 INIT_STAGE(aps_ready);
+
+void ipi_test(void *)
+{
+	pr_warn("IPI TEST!\n");
+}
 
 void kmain()
 {
@@ -48,8 +57,52 @@ void kmain()
 	assert(proc1->pid == 1);
 	char *init_args[] = { "/sbin/init", NULL };
 	char *init_envp[] = { NULL };
-	EXPECT(launch_elf(proc1, "/sbin/init", SCHED_PRIO_TIME_SHARE, init_args,
-			  init_envp));
+	struct kthread *init_thrd;
+	EXPECT(launch_elf(proc1, proc1->map, "/sbin/init",
+			  SCHED_PRIO_TIME_SHARE, init_args, init_envp,
+			  &init_thrd));
+	sched_resume(init_thrd);
+
+#if 0
+	struct timer t1;
+	timer_init(&t1);
+	struct timer t2;
+	timer_init(&t2);
+	struct timer t3;
+	timer_init(&t3);
+	struct timer t4;
+	timer_init(&t4);
+
+	nstime_t times[4] = { MSTIME(1000), MSTIME(1100), MSTIME(1200),
+			      MSTIME(1300) };
+
+	timer_install(&t1, MSTIME(500));
+	timer_install(&t2, MSTIME(500));
+	timer_install(&t3, MSTIME(500));
+	timer_install(&t4, MSTIME(500));
+
+	void *objs[4] = { &t1, &t2, &t3, &t4 };
+	for (;;) {
+		status_t ret = sched_wait_many(NULL, objs, 4, WAIT_MODE_BLOCK,
+					       WAIT_TYPE_ANY, TIMEOUT_INFINITE);
+
+		if (!IS_WAIT_OK(ret)) {
+			pr_debug("wait failed: %s\n", status_str(ret));
+		} else {
+			pr_debug("wait successful. index: %d\n",
+				 WAIT_INDEX(ret));
+			int idx = WAIT_INDEX(ret);
+			struct timer *t = objs[idx];
+			timer_reset(t);
+			timer_install(t, times[idx]);
+		}
+	}
+
+	timer_uninstall(&t1);
+	timer_uninstall(&t2);
+	timer_uninstall(&t3);
+	timer_uninstall(&t4);
+#endif
 
 #if 0
 	extern void PerformFireworksTest();
@@ -57,6 +110,9 @@ void kmain()
 			     PerformFireworksTest, NULL, 1, NULL);
 #endif
 
+	ipi_send_wait(-1, ipi_test, NULL);
+
+	pr_debug("before sched_exit_self in kmain\n");
 	sched_exit_self();
 }
 
@@ -83,7 +139,7 @@ void kstart()
 	// show the yak
 	kputs(bootup_ascii_txt);
 
-	pr_info("Yak-" ARCH " v" VERSION_STRING " booting\n");
+	pr_info("Yak-" ARCH_STR " v" VERSION_STRING " booting\n");
 
 	// setup the kernel init machine
 	init_setup();
@@ -98,7 +154,7 @@ void kstart()
 	// * kernel heap
 	INIT_RUN_STAGE(bsp_ready);
 
-	kernel_thread_create("kmain", SCHED_PRIO_REAL_TIME, kmain, NULL, 1,
+	kernel_thread_create("kmain", SCHED_PRIO_REAL_TIME_END, kmain, NULL, 1,
 			     NULL);
 
 	// our stack is cpu0's idle stack

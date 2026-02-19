@@ -45,8 +45,7 @@ void kthread_context_init(struct kthread *thread, void *kstack_top,
 	}
 }
 
-[[gnu::noreturn]]
-void kernel_enter_userspace(uint64_t ip, uint64_t sp)
+__noreturn void kernel_enter_userspace(uint64_t ip, uint64_t sp)
 {
 	pr_debug("enter userspace: 0x%lx rsp: 0x%lx\n", ip, sp);
 
@@ -81,11 +80,9 @@ void kernel_enter_userspace(uint64_t ip, uint64_t sp)
 	__builtin_unreachable();
 }
 
-[[gnu::no_instrument_function]]
 extern void asm_swtch(struct kthread *current, struct kthread *new);
 
-__no_prof __no_san void plat_swtch(struct kthread *current,
-				   struct kthread *thread)
+void plat_swtch(struct kthread *current, struct kthread *thread)
 {
 	if (current->user_thread) {
 		assert(current->pcb.fp_state);

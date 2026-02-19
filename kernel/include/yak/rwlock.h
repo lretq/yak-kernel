@@ -12,7 +12,7 @@ extern "C" {
 
 struct rwlock {
 	struct kevent event;
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 	const char *name;
 #endif
 	struct kthread *exclusive_owner;

@@ -7,7 +7,6 @@ void mount_root()
 	EXPECT(vfs_mount("/", "tmpfs"));
 }
 
-INIT_STAGE(rootfs);
 INIT_DEPS(rootfs, tmpfs);
-INIT_ENTAILS(rootfs, rootfs);
+INIT_ENTAILS(rootfs);
 INIT_NODE(rootfs, mount_root);

@@ -28,6 +28,7 @@ static init_node_t *nodelist = NULL;
 void init_node_register(init_node_t *node)
 {
 	init_node_t *cur = nodelist;
+
 	if (!cur) {
 		nodelist = node;
 		return;
@@ -102,8 +103,8 @@ void init_stage_run(init_stage_t *stage)
 	pr_info("reached stage '%s'\n", stage->name);
 }
 
-extern char __kernel_init_node_start[];
-extern char __kernel_init_node_end[];
+extern init_node_t __kernel_init_node_start[];
+extern init_node_t __kernel_init_node_end[];
 
 extern char __kernel_init_stage_start[];
 extern char __kernel_init_stage_end[];
@@ -111,10 +112,9 @@ extern char __kernel_init_stage_end[];
 void init_setup()
 {
 	size_t task_count = 0;
-	init_node_t *start = (init_node_t *)__kernel_init_node_start;
-	init_node_t *end = (init_node_t *)__kernel_init_node_end;
 
-	for (init_node_t *node = start; node < end; node++) {
+	for (init_node_t *node = __kernel_init_node_start;
+	     node < __kernel_init_node_end; node++) {
 		init_node_register(node);
 		task_count++;
 	}

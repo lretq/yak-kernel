@@ -16,12 +16,14 @@
 #include <yak/arch-mm.h>
 #include <yak/log.h>
 
-size_t n_pagefaults;
+size_t n_pagefaults = 0;
 
 // TODO: fault_flags are also used in map.c:VM_PREFILL!!!
 status_t vm_handle_fault(struct vm_map *map, vaddr_t address,
 			 unsigned long fault_flags)
 {
+	assert(map);
+
 	if ((fault_flags & VM_FAULT_PREFILL) == 0)
 		__atomic_fetch_add(&n_pagefaults, 1, __ATOMIC_RELAXED);
 
@@ -34,7 +36,7 @@ status_t vm_handle_fault(struct vm_map *map, vaddr_t address,
 
 	if (!entry || entry->type == VM_MAP_ENT_RESERVED) {
 		rwlock_release_shared(&map->map_lock);
-		if (address >= 0x0 && address < PAGE_SIZE)
+		if (address < PAGE_SIZE)
 			return YAK_NULL_DEREF;
 
 		return YAK_NOENT;
@@ -74,23 +76,43 @@ status_t vm_handle_fault(struct vm_map *map, vaddr_t address,
 								VM_AMAP_LOCKED);
 			// TODO: handle page-in?
 
+			vm_prot_t prot = entry->protection;
+
 			if (panon && *panon) {
 				anon = *panon;
 				page = anon->page;
 				assert(page);
 			} else {
-				// anon will never take the cow route.
-				anon = vm_amap_fill(amap, backing_offset, &page,
-						    VM_AMAP_LOCKED);
-				assert(anon);
-				EXPECT(kmutex_acquire(&anon->anon_lock,
-						      TIMEOUT_INFINITE));
+				struct page *backing_page;
+				EXPECT(vm_lookuppage(entry->object,
+						     backing_offset, 0,
+						     &backing_page));
+				if (fault_flags & VM_FAULT_WRITE) {
+					// anon will never take the cow route.
+					// lookup & copy the backing file data
+					anon = vm_amap_fill_locked(
+						amap, backing_offset,
+						backing_page, VM_AMAP_LOCKED);
+					assert(anon);
+					EXPECT(kmutex_acquire(&anon->anon_lock,
+							      TIMEOUT_INFINITE));
+
+					page = anon->page;
+				} else {
+					page = backing_page;
+
+					prot &= ~VM_WRITE;
+
+					pmap_map(&map->pmap, address,
+						 page_to_addr(page), 0, prot,
+						 entry->cache);
+
+					goto exit;
+				}
 			}
 
 			assert(anon);
 			assert(page != NULL);
-
-			vm_prot_t prot = entry->protection;
 
 			// Handle Copy on Write (CoW)
 			// => after fork(), for mmap(MAP_PRIVATE) mappings
@@ -139,6 +161,7 @@ status_t vm_handle_fault(struct vm_map *map, vaddr_t address,
 				 entry->protection, entry->cache);
 		}
 
+exit:
 		rwlock_release_exclusive(&map->map_lock);
 		return YAK_SUCCESS;
 	}

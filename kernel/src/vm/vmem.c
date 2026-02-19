@@ -1,3 +1,5 @@
+#define pr_fmt(fmt) "vmem: " fmt
+
 #include "yak/init.h"
 #include "yak/types.h"
 #include "yak/vm/map.h"
@@ -8,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <yak/vm/pmap.h>
 #include <yak/vm/kmem.h>
 #include <yak/queue.h>
 #include <yak/arch-mm.h>
@@ -130,6 +133,13 @@ void *kmem_alloc(vmem_t *vmp, size_t size, int vmflag)
 
 void kmem_free(vmem_t *vmp, void *addr, size_t size)
 {
+	assert(addr);
+	assert(size > 0);
+
+	//pr_debug("kmem_free %lx-%lx\n", (vaddr_t)addr, (vaddr_t)addr + size);
+	memset(addr, 0xBB, size);
+	pmap_unmap_range_and_free(&kmap()->pmap, (vaddr_t)addr, size, 0);
+
 	vmem_free(vmp, addr, size);
 }
 
@@ -424,6 +434,7 @@ vmem_t *vmem_init(vmem_t *vmp, char *name, void *base, size_t size,
 void vmem_destroy(vmem_t *vmp)
 {
 	(void)vmp;
+	pr_warn("implement destroying vmem_t\n");
 }
 
 void *vmem_alloc(vmem_t *vmp, size_t size, int vmflag)

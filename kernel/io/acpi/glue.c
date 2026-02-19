@@ -177,18 +177,19 @@ void uacpi_kernel_free_mutex(uacpi_handle handle)
 uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle,
 					uacpi_u16 ms_timeout)
 {
+	nstime_t timeout;
 	if (ms_timeout == 0xFFFF) {
-		ms_timeout = TIMEOUT_INFINITE;
+		timeout = TIMEOUT_INFINITE;
 	} else if (ms_timeout == 0) {
 		return IS_OK(kmutex_acquire_polling(handle, POLL_ONCE)) ?
 			       UACPI_STATUS_OK :
 			       UACPI_STATUS_TIMEOUT;
 	} else {
-		ms_timeout = MSTIME(ms_timeout);
+		timeout = MSTIME(ms_timeout);
 	}
 
-	return IS_OK(kmutex_acquire(handle, ms_timeout)) ? UACPI_STATUS_OK :
-							   UACPI_STATUS_TIMEOUT;
+	return IS_OK(kmutex_acquire(handle, timeout)) ? UACPI_STATUS_OK :
+							UACPI_STATUS_TIMEOUT;
 }
 
 void uacpi_kernel_release_mutex(uacpi_handle handle)
@@ -211,21 +212,26 @@ void uacpi_kernel_free_event(uacpi_handle handle)
 uacpi_bool uacpi_kernel_wait_for_event(uacpi_handle handle,
 				       uacpi_u16 ms_timeout)
 {
+	status_t rv;
+
+	nstime_t timeout;
 	if (ms_timeout == 0) {
-		return IS_OK(sched_wait_single(handle, WAIT_MODE_POLL,
-					       WAIT_TYPE_ANY, POLL_ONCE)) ?
-			       UACPI_STATUS_OK :
-			       UACPI_STATUS_TIMEOUT;
+		rv = sched_wait(handle, WAIT_MODE_POLL, POLL_ONCE);
+		goto exit;
 	} else if (ms_timeout == 0xFFFF) {
-		ms_timeout = TIMEOUT_INFINITE;
+		timeout = TIMEOUT_INFINITE;
 	} else {
-		ms_timeout = MSTIME(ms_timeout);
+		timeout = MSTIME(ms_timeout);
 	}
 
-	return IS_OK(sched_wait_single(handle, WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
-				       ms_timeout)) ?
-		       UACPI_STATUS_OK :
-		       UACPI_STATUS_TIMEOUT;
+	rv = sched_wait(handle, WAIT_MODE_BLOCK, timeout);
+
+exit:
+	if (IS_OK(rv)) {
+		return UACPI_STATUS_OK;
+	}
+
+	return UACPI_STATUS_TIMEOUT;
 }
 
 void uacpi_kernel_signal_event(uacpi_handle handle)

@@ -69,13 +69,11 @@ enum pte_masks {
 	pteNoExecute = 0x8000000000000000,
 };
 
-[[gnu::no_instrument_function, gnu::always_inline]]
 static inline int pte_is_zero(pte_t pte)
 {
 	return pte == 0;
 }
 
-[[gnu::no_instrument_function, gnu::always_inline]]
 static inline int pte_is_large(pte_t pte, size_t lvl)
 {
 	return (lvl > 0 && (pte & ptePagesize) != 0);

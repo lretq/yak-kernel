@@ -8,7 +8,7 @@ yak_add_sources(
     String.cc
     Dictionary.cc
     IoRegistry.cc
-    
+
     drivers/ps2.cc
 
     acpi/AcpiDevice.cc
@@ -23,4 +23,8 @@ yak_add_sources(
     pci/PciPersonality.cc
     pci/pci.c
     pci/pci_ecam.c
+
+    tty/tty.c
+    tty/n_tty.c
+    tty/console.c
 )

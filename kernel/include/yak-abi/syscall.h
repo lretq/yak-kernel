@@ -35,13 +35,16 @@
 		   (uint64_t)(arg6))
 
 #define syscall_rv(...) (syscall(__VA_ARGS__).retval)
-#define syscall_err(...) (syscall(__VA_ARGS__).errno)
+#define syscall_err(...) (syscall(__VA_ARGS__).err)
 
 enum {
-	SYS_OPEN,
+	SYS_OPENAT = 1,
 	SYS_CLOSE,
 	SYS_READ,
 	SYS_WRITE,
+	SYS_PREAD,
+	SYS_PWRITE,
+	SYS_DUP,
 	SYS_DUP2,
 	SYS_SEEK,
 	SYS_FORK,
@@ -59,6 +62,18 @@ enum {
 	SYS_ARCHCTL,
 	SYS_SLEEP,
 	SYS_FALLOCATE,
+	SYS_FCNTL,
+	SYS_IOCTL,
+	SYS_FSTATAT,
+	SYS_CHDIR,
+	SYS_FCHDIR,
+	SYS_GETDENTS,
+	SYS_FACCESSAT,
+	SYS_WAITPID,
+	SYS_POLL,
+	SYS_READLINKAT,
+	SYS_SYMLINKAT,
+	SYS_LINKAT,
 	SYS_DEBUG_SLEEP,
 	SYS_DEBUG_LOG,
 };

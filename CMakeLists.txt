@@ -1,12 +1,9 @@
 cmake_minimum_required(VERSION 3.26)
+set(CMAKE_TOOLCHAIN_FILE ${CMAKE_SOURCE_DIR}/toolchains/Generic.cmake)
 
-set(YAK_ARCH x86_64)
-
-include("${CMAKE_SOURCE_DIR}/toolchains/toolchain_clang.cmake")
-
-project(Yak 
+project(Yak
     VERSION 0.0.0
-    HOMEPAGE_URL https://github.com/lretq/yak
+    HOMEPAGE_URL https://github.com/lretq/yak-src
     LANGUAGES C CXX ASM)
 
 set(CMAKE_CXX_STANDARD 23)

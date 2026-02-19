@@ -20,4 +20,4 @@ struct [[gnu::packed]] tss {
 	uint32_t iopb;
 };
 
-__percpu extern struct tss t_tss;
+extern __percpu struct tss t_tss;

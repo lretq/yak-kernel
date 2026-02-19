@@ -1,5 +1,7 @@
 #include <string.h>
 #include <yak-abi/errno.h>
+#include <yak-abi/fcntl.h>
+#include <yak/file.h>
 #include <yak/heap.h>
 #include <yak/sched.h>
 #include <yak/cpudata.h>
@@ -53,15 +55,32 @@ DEFINE_SYSCALL(SYS_EXECVE, execve, const char *user_path, char **user_argv,
 		struct vm_map *new_map = kzalloc(sizeof(struct vm_map));
 		assert(new_map);
 		vm_map_init(new_map);
-		proc->map = new_map;
 
-		status_t rv = launch_elf(proc, path, curthread()->priority,
-					 argv, envp);
+		struct kthread *thread;
+		status_t rv = launch_elf(proc, new_map, path,
+					 curthread()->priority, argv, envp,
+					 &thread);
+
 		if (IS_ERR(rv)) {
-			// TODO: destroy new map!
-			proc->map = orig_map;
+			vm_map_destroy(new_map);
 			return SYS_ERR(status_errno(rv));
 		}
+
+		proc->map = new_map;
+		vm_map_activate(new_map);
+
+		vm_map_destroy(orig_map);
+
+		{
+			guard(mutex)(&proc->fd_mutex);
+			for (int i = 0; i < proc->fd_cap; i++) {
+				if (proc->fds[i] &&
+				    proc->fds[i]->flags & FD_CLOEXEC)
+					fd_close(proc, i);
+			}
+		}
+
+		sched_resume(thread);
 	}
 
 	// Simplest solution: create a new thread and kill yourself

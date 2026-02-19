@@ -14,12 +14,19 @@ extern "C" {
 #include <yak/kernel-file.h>
 #include <yak/sched.h>
 #include <yak/spinlock.h>
+#include <yak/ipi.h>
 
 struct cpu {
 	struct cpu_md md;
 	struct cpu *self;
 
 	size_t cpu_id;
+
+	ipl_t hw_ipl;
+
+#if CONFIG_LAZY_IPL
+	ipl_t soft_ipl;
+#endif
 
 	void *syscall_temp;
 	void *kstack_top;
@@ -42,6 +49,9 @@ struct cpu {
 	struct spinlock timer_lock;
 	HEAP_HEAD(timer_heap, timer) timer_heap;
 	struct dpc timer_update_dpc;
+
+	// remote calls
+	struct remote_call_queue rc_queue;
 };
 
 #define curthread() curcpu().current_thread

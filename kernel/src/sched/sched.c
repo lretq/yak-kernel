@@ -30,6 +30,7 @@ See: https://github.com/xrarch/mintia2
 #include <yak/kevent.h>
 #include <yak/dpc.h>
 #include <yak/sched.h>
+#include <yak/hint.h>
 #include <yak/softint.h>
 #include <yak/cpudata.h>
 #include <yak/spinlock.h>
@@ -49,12 +50,10 @@ static struct kthread *reaper_thread = NULL;
 
 void sched_init()
 {
-	TAILQ_INIT(&reaper_queue);
-	event_init(&reaper_ev, 0);
+	event_init(&reaper_ev, 0, 0);
 }
 
-[[gnu::always_inline]]
-__no_san __no_prof static void wait_for_switch(struct kthread *thread)
+static inline void wait_for_switch(struct kthread *thread)
 {
 	while (__atomic_load_n(&thread->switching, __ATOMIC_ACQUIRE)) {
 		busyloop_hint();
@@ -62,14 +61,17 @@ __no_san __no_prof static void wait_for_switch(struct kthread *thread)
 }
 
 [[gnu::no_instrument_function]]
-void plat_swtch(struct kthread *current, struct kthread *new);
+extern void plat_swtch(struct kthread *current, struct kthread *new);
 
 // called after switching off stack is complete
 [[gnu::no_instrument_function]]
-void sched_finalize_swtch(struct kthread *thread)
+void sched_finalize_swtch(struct kthread *current, struct kthread *next)
 {
-	spinlock_unlock_noipl(&thread->thread_lock);
-	__atomic_store_n(&thread->switching, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&current->switching, 0, __ATOMIC_RELEASE);
+
+	spinlock_unlock_noipl(&current->thread_lock);
+
+	next->status = THREAD_RUNNING;
 }
 
 [[gnu::no_instrument_function]]
@@ -79,22 +81,31 @@ static void swtch(struct kthread *current, struct kthread *thread)
 	assert(current && thread);
 	assert(current != thread);
 	assert(spinlock_held(&current->thread_lock));
-	assert(!spinlock_held(&thread->thread_lock));
+	// This can happen legally:
+	// if we come from sched_yield and we have waited for switching=0 sucessfully,
+	// the spinlock is unlocked only afterwards
+	//assert(!spinlock_held(&thread->thread_lock));
+	assert(current->status != THREAD_TERMINATING ||
+	       current->status != THREAD_WAITING);
 
 	current->affinity_cpu = curcpu_ptr();
+
+	if (thread->vm_ctx != NULL) {
+		// Kernel processes can attach themselves to arbitrary map contexts
+		assert(thread->owner_process == &kproc0);
+		vm_map_activate(thread->vm_ctx);
+	} else if (thread->user_thread) {
+		if (current->owner_process != thread->owner_process) {
+			vm_map_activate(thread->owner_process->map);
+		}
+	}
 
 	curcpu().current_thread = thread;
 	curcpu().kstack_top = thread->kstack_top;
 
-	if (unlikely(thread->vm_ctx != NULL)) {
-		assert(thread->owner_process == &kproc0);
-		vm_map_activate(thread->vm_ctx);
-	} else if (thread->user_thread) {
-		if (current->owner_process != thread->owner_process)
-			vm_map_activate(thread->owner_process->map);
-	}
-
 	plat_swtch(current, thread);
+
+	assert(current == curthread());
 
 	assert(current->status != THREAD_TERMINATING);
 
@@ -107,15 +118,20 @@ void sched_preempt(struct cpu *cpu)
 {
 	spinlock_lock_noipl(&cpu->sched_lock);
 	struct kthread *next = cpu->next_thread;
-	if (!next)
+	if (!next) {
+		spinlock_unlock_noipl(&cpu->sched_lock);
 		return;
+	}
+
+	// retrieve the next thread
 	cpu->next_thread = NULL;
 	next->status = THREAD_SWITCHING;
+
 	spinlock_unlock_noipl(&cpu->sched_lock);
 
-	struct kthread *current = cpu->current_thread;
-
 	wait_for_switch(next);
+
+	struct kthread *current = cpu->current_thread;
 
 	spinlock_lock_noipl(&current->thread_lock);
 
@@ -140,24 +156,26 @@ static struct kthread *select_next(struct cpu *cpu, unsigned int priority)
 	struct sched *sched = &cpu->sched;
 
 	// threads on current runqueue
-	if (sched->current_rq->mask) {
+	if (sched->current_rq->ready_mask) {
 		unsigned int next_priority =
-			31 - __builtin_clz(sched->current_rq->mask);
+			31 - __builtin_clz(sched->current_rq->ready_mask);
 		if (priority > next_priority)
 			return NULL;
 
-		thread_queue_t *rq = &sched->current_rq->queue[next_priority];
+		thread_queue_t *rq = &sched->current_rq->queues[next_priority];
 
 		struct kthread *thread = TAILQ_FIRST(rq);
 		assert(thread);
-		TAILQ_REMOVE(rq, thread, rq_entry);
+		TAILQ_REMOVE(rq, thread, queue_entry);
+		assert(rq->tqh_last != NULL);
 		// if runqueue is now empty, update mask
 		if (TAILQ_EMPTY(rq)) {
-			sched->current_rq->mask &= ~(1UL << next_priority);
+			sched->current_rq->ready_mask &=
+				~(1UL << next_priority);
 		}
 		thread->status = THREAD_SWITCHING;
 		return thread;
-	} else if (sched->next_rq->mask) {
+	} else if (sched->next_rq->ready_mask) {
 #if 0
 		pr_warn("swap next and current\n");
 #endif
@@ -171,7 +189,8 @@ static struct kthread *select_next(struct cpu *cpu, unsigned int priority)
 	} else if (!TAILQ_EMPTY(&sched->idle_rq)) {
 		// only run idle priority if no other threads are ready
 		struct kthread *thread = TAILQ_FIRST(&sched->idle_rq);
-		TAILQ_REMOVE(&sched->idle_rq, thread, rq_entry);
+		TAILQ_REMOVE(&sched->idle_rq, thread, queue_entry);
+		assert(sched->idle_rq.tqh_last != NULL);
 		thread->status = THREAD_SWITCHING;
 		return thread;
 	}
@@ -196,14 +215,17 @@ static void do_reschedule()
 
 void kthread_init(struct kthread *thread, const char *name,
 		  unsigned int initial_priority, struct kprocess *process,
-		  int user_thread)
+		  bool user_thread)
 {
 	spinlock_init(&thread->thread_lock);
 
 	thread->switching = 0;
 
-	strncpy(thread->name, name, sizeof(thread->name) - 1);
-	thread->name[sizeof(thread->name) - 1] = '\0';
+	size_t namelen = strlen(name);
+	if (namelen > KTHREAD_MAX_NAME_LEN)
+		namelen = KTHREAD_MAX_NAME_LEN - 1;
+	memcpy(thread->name, name, namelen);
+	thread->name[namelen] = '\0';
 
 	thread->kstack_top = NULL;
 
@@ -234,7 +256,6 @@ void kthread_init(struct kthread *thread, const char *name,
 	thread->owner_process = process;
 }
 
-[[gnu::no_instrument_function]]
 void sched_yield(struct kthread *current, struct cpu *cpu)
 {
 	assert(current);
@@ -260,8 +281,24 @@ void sched_yield(struct kthread *current, struct cpu *cpu)
 	}
 }
 
+static void sched_rq_insert(struct runqueue *rq, struct kthread *thread)
+{
+	assert(thread);
+	assert(rq);
+
+	thread_queue_t *queue = &rq->queues[thread->priority - 1];
+	assert(queue);
+
+	assert(queue->tqh_last);
+	TAILQ_INSERT_TAIL(queue, thread, queue_entry);
+	assert(TAILQ_FIRST(queue) != NULL);
+
+	rq->ready_mask |= (1UL << (thread->priority - 1));
+}
+
 void sched_insert(struct cpu *cpu, struct kthread *thread, int isOther)
 {
+loop:
 	// TODO: update thread stats maybe?
 	thread->last_cpu = cpu;
 	thread->status = THREAD_READY;
@@ -270,77 +307,72 @@ void sched_insert(struct cpu *cpu, struct kthread *thread, int isOther)
 	assert(spinlock_held(&cpu->sched_lock));
 
 	struct kthread *current = cpu->current_thread, *next = cpu->next_thread;
+	// Compare with either an already selected thread, or the currently running thread
 	struct kthread *comp = next ? next : current;
 
 	// TODO: check interactivity ??
 	if (thread->priority >= SCHED_PRIO_REAL_TIME) {
 		if (thread->priority <= comp->priority) {
-			thread_queue_t *list =
-				&sched->current_rq->queue[thread->priority];
-
-			assert(list);
-			assert(thread);
-
 #if 0
 			pr_debug("f: %p l: %p\n", list->tqh_first,
 				 list->tqh_last);
 #endif
 
-			// can't preempt now, so insert it into current runqueue
-			TAILQ_INSERT_TAIL(list, thread, rq_entry);
-			assert(TAILQ_FIRST(list) != NULL);
-			sched->current_rq->mask |= (1UL << thread->priority);
+			// We aren't important enough to preempt
+			sched_rq_insert(sched->current_rq, thread);
+
 			return;
 		}
-	} else {
+	} else /* priority < SCHED_PRIO_REAL_TIME */ {
 		if (comp != &cpu->idle_thread) {
-			if (thread->priority == SCHED_PRIO_IDLE) {
-				TAILQ_INSERT_TAIL(&sched->idle_rq, thread,
-						  rq_entry);
+			// Time shared threads mustn't preempt anything other than idle threads
+			if (thread->priority == SCHED_PRIO_TIME_SHARE) {
+				sched_rq_insert(sched->next_rq, thread);
 			} else {
-				TAILQ_INSERT_TAIL(
-					&sched->next_rq->queue[thread->priority],
-					thread, rq_entry);
-				sched->next_rq->mask |=
-					(1UL << thread->priority);
+				TAILQ_INSERT_TAIL(&sched->idle_rq, thread,
+						  queue_entry);
 			}
 
-			// these cannot preempt, ever
 			return;
 		}
+
+		// We can preempt the idle thread!
 	}
 
-	// next can preempt currently running thread
+	// thread can preempt the currently running thread
 	thread->status = THREAD_NEXT;
-
 	cpu->next_thread = thread;
 
 	if (next) {
 		// reinsert old next thread if we preempted
 		// next prio < our prio
-		// TODO: should I hold next thread's lock o?
-		sched_insert(cpu, next, isOther);
-	}
 
-	if (likely(!isOther)) {
-		softint_issue(IPL_DPC);
+		thread = next;
+		goto loop;
 	} else {
-		softint_issue_other(cpu, IPL_DPC);
+		if (isOther) {
+			softint_issue_other(cpu, IPL_DPC);
+		} else {
+			softint_issue(IPL_DPC);
+		}
 	}
 }
 
 static size_t count = 0;
+
+// Round Robin the next CPU
 static struct cpu *find_cpu()
 {
 	assert(cpus_online() != 0);
 
-	size_t cpu, i = 0,
-		    desired = __atomic_fetch_add(&count, 1, __ATOMIC_ACQUIRE) %
-			      cpus_online();
+	size_t desired =
+		__atomic_fetch_add(&count, 1, __ATOMIC_RELAXED) % cpus_online();
+	size_t i = 0;
 
-	for_each_cpu(cpu, &cpumask_active) {
+	size_t tmp;
+	for_each_cpu(tmp, &cpumask_active) {
 		if (i++ == desired)
-			return getcpu(cpu);
+			return getcpu(tmp);
 	}
 
 	pr_warn("find_cpu(): fallback to local core?\n");
@@ -369,11 +401,13 @@ void sched_resume(struct kthread *thread)
 	spinlock_unlock(&thread->thread_lock, ipl);
 }
 
+// This is the thread reaper
+// Once a process calls sched_destroy_self it frees all it's ressources
+// and wakes the reaper
 void thread_reaper_fn()
 {
 	for (;;) {
-		sched_wait_single(&reaper_ev, WAIT_MODE_BLOCK, WAIT_TYPE_ANY,
-				  TIMEOUT_INFINITE);
+		sched_wait(&reaper_ev, WAIT_MODE_BLOCK, TIMEOUT_INFINITE);
 
 		ipl_t ipl = spinlock_lock(&reaper_lock);
 
@@ -381,7 +415,7 @@ void thread_reaper_fn()
 
 		while (!TAILQ_EMPTY(&reaper_queue)) {
 			thread = TAILQ_FIRST(&reaper_queue);
-			TAILQ_REMOVE(&reaper_queue, thread, rq_entry);
+			TAILQ_REMOVE(&reaper_queue, thread, queue_entry);
 
 			spinlock_unlock(&reaper_lock, ipl);
 
@@ -396,7 +430,7 @@ void thread_reaper_fn()
 
 void sched_dynamic_init()
 {
-	kernel_thread_create("reaper_thread", SCHED_PRIO_REAL_TIME_END,
+	kernel_thread_create("reaper_thread", SCHED_PRIO_REAL_TIME,
 			     thread_reaper_fn, NULL, 1, &reaper_thread);
 }
 
@@ -411,27 +445,40 @@ void sched_exit_self()
 
 	struct kthread *thread = curthread();
 
+	// We need to get off the process's map before getting reaped!
+	// If our thread and process gets reaped (waitpid) then we cannot be on
+	// the process map anymore.
+	vm_map_tmp_switch(kmap());
+
+	//pr_debug("sched_exit_self: %p\n", thread);
+
 	spinlock_lock_noipl(&thread->thread_lock);
+
+	spinlock_lock_noipl(&reaper_lock);
+	TAILQ_INSERT_HEAD(&reaper_queue, thread, queue_entry);
+	spinlock_unlock_noipl(&reaper_lock);
+
+	event_alarm(&reaper_ev, false);
 
 	thread->status = THREAD_TERMINATING;
 
-	struct cpu *cpu = curcpu_ptr();
+	//pr_debug("pre-yield: %p\n", thread);
 
-	spinlock_lock_noipl(&reaper_lock);
-	TAILQ_INSERT_HEAD(&reaper_queue, thread, rq_entry);
-	event_alarm(&reaper_ev);
-	spinlock_unlock_noipl(&reaper_lock);
-
-	sched_yield(thread, cpu);
+	sched_yield(thread, curcpu_ptr());
 	__builtin_unreachable();
 	__builtin_trap();
 }
 
 void idle_loop()
 {
-	setipl(IPL_PASSIVE);
+	xipl(IPL_PASSIVE);
 	while (1) {
 		assert(curipl() == IPL_PASSIVE);
-		asm volatile("sti; hlt");
+#if defined __x86_64__
+		enable_interrupts();
+		asm volatile("hlt");
+#else
+#error "Unsupported architecture! Port idle_loop for your platform"
+#endif
 	}
 }

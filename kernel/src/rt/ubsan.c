@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <yak/log.h>
 
+#if CONFIG_UBSAN
+
 struct tu_source_location {
 	const char *file;
 	uint32_t line;
@@ -70,8 +72,6 @@ struct tu_invalid_builtin_data {
 	struct tu_source_location location;
 	unsigned char kind;
 };
-
-#ifdef CONFIG_UBSAN
 
 #define print(fmt, ...) pr_error(fmt, ##__VA_ARGS__)
 

@@ -34,5 +34,6 @@ struct vm_anon **vm_amap_lookup(struct vm_amap *amap, voff_t offset,
 
 struct vm_amap *vm_amap_copy(struct vm_amap *amap);
 
-struct vm_anon *vm_amap_fill(struct vm_amap *amap, voff_t offset,
-			     struct page **ppage, unsigned int flags);
+struct vm_anon *vm_amap_fill_locked(struct vm_amap *amap, voff_t offset,
+					   struct page *backing_page,
+					   unsigned int flags);

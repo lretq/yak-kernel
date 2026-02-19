@@ -5,15 +5,18 @@ extern "C" {
 #endif
 
 #ifdef __cplusplus
-#define INIT_MODIFIER extern "C"
+#define INIT_MODIFIER_START extern "C" {
+#define INIT_MODIFIER_END }
 #define INIT_DECL_MODIFIER "C"
 #else
-#define INIT_MODIFIER
+#define INIT_MODIFIER_START
+#define INIT_MODIFIER_END
 #define INIT_DECL_MODIFIER
 #endif
 
 #include <stddef.h>
 #include <yak/macro.h>
+#include <yak/hint.h>
 
 typedef struct init_node init_node_t;
 typedef struct init_stage init_stage_t;
@@ -91,33 +94,35 @@ struct init_stage {
 	static init_node_t *node_name##_deps[] = { APPLY( \
 		DEP_PTR, ##__VA_ARGS__) NULL };
 
-#define INIT_NODE(node_name, node_func)                                     \
-	INIT_MODIFIER [[gnu::section(".init_node." #node_name), gnu::used]] \
-	init_node_t node_name = { .name = #node_name,                       \
-				  .func = node_func,                        \
-				  .entails_stages = node_name##_entails,    \
-				  .entails_count =                          \
-					  elementsof(node_name##_entails),  \
-				  .deps = node_name##_deps,                 \
-				  .executed = false,                        \
-				  .next = NULL };
+#define INIT_NODE(node_name, node_func)                                           \
+	INIT_MODIFIER_START                                                       \
+	__attribute__((                                                  \
+		section(".init_node"), used, aligned(__alignof__(init_node_t)))) init_node_t node_name = { \
+		.name = #node_name,                                      \
+		.func = node_func,                                       \
+		.entails_stages = node_name##_entails,                   \
+		.entails_count = elementsof(node_name##_entails),        \
+		.deps = node_name##_deps,                                \
+		.executed = false,                                       \
+		.next = NULL                                             \
+	};                                                               \
+	INIT_MODIFIER_END
 
-#define INIT_STAGE(stage_name)                                                \
-	INIT_MODIFIER init_node_t stage_name##_stage = {                      \
-		.name = #stage_name "_stage",                                 \
-		.func = NULL,                                                 \
-		.entails_stages = NULL,                                       \
-		.entails_count = 0,                                           \
-		.deps = NULL,                                                 \
-		.executed = false,                                            \
-		.next = NULL                                                  \
-	};                                                                    \
-	INIT_MODIFIER [[gnu::section(".init_stage." #stage_name), gnu::used]] \
-	init_stage_t stage_name##_struct_stage = {                            \
-		.name = #stage_name,                                          \
-		.phony_node = &stage_name##_stage,                            \
-		.phony_deps = { NULL }                                        \
-	};
+#define INIT_STAGE(stage_name)                                             \
+	INIT_MODIFIER_START                                                \
+	init_node_t stage_name##_stage = { .name = #stage_name "_stage",   \
+					   .func = NULL,                   \
+					   .entails_stages = NULL,         \
+					   .entails_count = 0,             \
+					   .deps = NULL,                   \
+					   .executed = false,              \
+					   .next = NULL };                 \
+	__attribute__((section(".init_stage"), used, aligned(__alignof__(init_stage_t)))) init_stage_t        \
+		stage_name##_struct_stage = { .name = #stage_name,         \
+					      .phony_node =                \
+						      &stage_name##_stage, \
+					      .phony_deps = { NULL } };    \
+	INIT_MODIFIER_END
 
 #define INIT_RUN_STAGE(stage_name)                          \
 	do {                                                \

@@ -14,7 +14,15 @@ struct device_ops {
 
 	status_t (*dev_open)(int minor, struct vnode **vp);
 
-	status_t (*dev_ioctl)(int minor, unsigned long com, void *data);
+	status_t (*dev_ioctl)(int minor, unsigned long com, void *data,
+			      int *ret);
+
+	status_t (*dev_poll)(int minor, short events, short *revents);
+};
+
+enum {
+	DEV_NULL = 1,
+	DEV_TTY = 4,
 };
 
 status_t devfs_register(char *name, int type, int major, int minor,

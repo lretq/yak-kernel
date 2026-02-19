@@ -1,9 +1,13 @@
 #include <stdint.h>
 #include <uacpi/resources.h>
 #include <yak/dpc.h>
+#include <yak/ringbuffer.h>
+#include <yak/spinlock.h>
+#include <yak/hint.h>
 #include <yak/irq.h>
 #include <yak/log.h>
 #include <yak/init.h>
+#include <yak/tty.h>
 #include <yak/io/acpi/AcpiDevice.hh>
 #include <yak/io/acpi/AcpiPersonality.hh>
 #include <yak/io/pci/Pci.hh>
@@ -15,22 +19,36 @@
 
 #include "../arch/x86_64/src/asm.h"
 
-#define RINGBUF_SIZE 32
+#define RINGBUF_SIZE 256
+
+extern "C" struct tty *console_tty;
 
 static const char codes[128] = {
-	'\0', '\e', '1',  '2',	'3',  '4',  '5',  '6',	'7',  '8', '9', '0',
-	'-',  '=',  '\b', '\t', 'q',  'w',  'e',  'r',	't',  'y', 'u', 'i',
-	'o',  'p',  '[',  ']',	'\n', '\0', 'a',  's',	'd',  'f', 'g', 'h',
-	'j',  'k',  'l',  ';',	'\'', '`',  '\0', '\\', 'z',  'x', 'c', 'v',
-	'b',  'n',  'm',  ',',	'.',  '/',  '\0', '\0', '\0', ' ', '\0'
+	'\0', '\e', '1',  '2',	'3',  '4',  '5',  '6',	'7',  '8',  '9',  '0',
+	'-',  '=',  '\b', '\t', 'q',  'w',  'e',  'r',	't',  'y',  'u',  'i',
+	'o',  'p',  '[',  ']',	'\n', '\0', 'a',  's',	'd',  'f',  'g',  'h',
+	'j',  'k',  'l',  ';',	'\'', '`',  '\0', '\\', 'z',  'x',  'c',  'v',
+	'b',  'n',  'm',  ',',	'.',  '/',  '\0', '\0', '\0', ' ',  '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'
 };
 
-static const char codes_shifted[] = {
-	'\0', '\e', '!',  '@',	'#',  '$',  '%',  '^',	'&',  '*', '(', ')',
-	'_',  '+',  '\b', '\t', 'Q',  'W',  'E',  'R',	'T',  'Y', 'U', 'I',
-	'O',  'P',  '{',  '}',	'\n', '\0', 'A',  'S',	'D',  'F', 'G', 'H',
-	'J',  'K',  'L',  ':',	'"',  '~',  '\0', '|',	'Z',  'X', 'C', 'V',
-	'B',  'N',  'M',  '<',	'>',  '?',  '\0', '\0', '\0', ' '
+static const char codes_shifted[128] = {
+	'\0', '\e', '!',  '@',	'#',  '$',  '%',  '^',	'&',  '*',  '(',  ')',
+	'_',  '+',  '\b', '\t', 'Q',  'W',  'E',  'R',	'T',  'Y',  'U',  'I',
+	'O',  'P',  '{',  '}',	'\n', '\0', 'A',  'S',	'D',  'F',  'G',  'H',
+	'J',  'K',  'L',  ':',	'"',  '~',  '\0', '|',	'Z',  'X',  'C',  'V',
+	'B',  'N',  'M',  '<',	'>',  '?',  '\0', '\0', '\0', ' ',  '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'
 };
 
 class Ps2Kbd final : public Device {
@@ -67,29 +85,127 @@ class Ps2Kbd final : public Device {
 		return UACPI_ITERATION_DECISION_CONTINUE;
 	}
 
+	void tty_write_str(struct tty *tty, const char *s)
+	{
+		while (*s) {
+			tty_input(tty, *s++);
+		}
+	}
+
 	void handler()
 	{
-		while (tail != head) {
-			auto sc = buf[tail++];
-			tail %= RINGBUF_SIZE;
+		bool extended = false;
+
+		while (true) {
+			auto state = spinlock_lock_interrupts(&buf_lock);
+			if (!ringbuffer_available(&buf_)) {
+				spinlock_unlock_interrupts(&buf_lock, state);
+				break;
+			}
+
+			uint8_t sc;
+			ringbuffer_get(&buf_, &sc, 1);
+
+			spinlock_unlock_interrupts(&buf_lock, state);
 
 			if (sc == 0x2a || sc == 0xaa || sc == 0x36 ||
 			    sc == 0xb6) {
 				shifted = (sc & 0x80) == 0;
+				continue;
 			}
 
-			// released
+			if (sc == 0xe0) {
+				extended = true;
+				continue;
+			}
+
+			// Left Ctrl
+			if (!extended && sc == 0x1D) {
+				ctrl = true;
+				continue;
+			}
+			if (!extended && sc == 0x9D) {
+				ctrl = false;
+				continue;
+			}
+
+			// Right Ctrl
+			if (extended && sc == 0x1D) {
+				ctrl = true;
+				extended = false;
+				continue;
+			}
+			if (extended && sc == 0x9D) {
+				ctrl = false;
+				extended = false;
+				continue;
+			}
+
+			if (sc == 0x38 && !extended) { // Left Alt press/release
+				alt = !(sc & 0x80);
+				continue;
+			} else if (sc == 0xB8 &&
+				   !extended) { // Left Alt release
+				alt = false;
+				continue;
+			} else if (extended &&
+				   sc == 0x38) { // Right Alt (AltGr)
+				alt = !(sc & 0x80);
+				extended = false;
+				continue;
+			} else if (extended &&
+				   sc == 0xB8) { // Right Alt release
+				alt = false;
+				extended = false;
+				continue;
+			}
+
+			// XXX: key release ignored
 			if (sc & 0x80)
 				continue;
 
-			if (shifted)
-				printk(0, "%c", codes_shifted[sc]);
-			else
-				printk(0, "%c", codes[sc]);
+			if (extended) {
+				// Arrow keys / extended keys
+				switch (sc) {
+				case 0x48:
+					tty_write_str(console_tty, "\e[A");
+					break; // Up
+				case 0x50:
+					tty_write_str(console_tty, "\e[B");
+					break; // Down
+				case 0x4B:
+					tty_write_str(console_tty, "\e[D");
+					break; // Left
+				case 0x4D:
+					tty_write_str(console_tty, "\e[C");
+					break; // Right
+				default:
+					break; // add more extended keys if needed
+				}
+				extended = false;
+			} else {
+				// Normal keys
+				char c = shifted ? codes_shifted[sc] :
+						   codes[sc];
+
+				if (ctrl && c >= 'a' && c <= 'z') {
+					pr_debug("ctrl pressed\n");
+					c = c - 'a' + 1; // Ctrl + letter
+				}
+
+				if (alt) {
+					pr_debug("alt pressed\n");
+					tty_input(console_tty, 0x1B); // ESC
+				}
+
+				if (c != '\0') {
+					tty_input(console_tty, c);
+				}
+			}
 		}
 	}
 
-	static void dpc_handler([[maybe_unused]] struct dpc *dpc, void *arg)
+	static void dpc_handler(__unused struct dpc *dpc, void *arg)
 	{
 		auto kbd = (Ps2Kbd *)arg;
 		kbd->handler();
@@ -103,17 +219,19 @@ class Ps2Kbd final : public Device {
 			return IRQ_NACK;
 		}
 
+		spinlock_lock_noipl(&kbd->buf_lock);
 		while (inb(kbd->cmd_port_) & 0x1) {
 			auto sc = inb(kbd->data_port_);
-			if ((kbd->head + 1) % RINGBUF_SIZE == kbd->tail) {
+
+			if (0 == ringbuffer_put(&kbd->buf_, &sc, 1)) {
+				spinlock_unlock_noipl(&kbd->buf_lock);
 				pr_warn("dropping scancode\n");
 				return IRQ_ACK;
 			}
-			kbd->buf[kbd->head++] = sc;
-			kbd->head %= RINGBUF_SIZE;
 		}
+		spinlock_unlock_noipl(&kbd->buf_lock);
 
-		dpc_enqueue(&kbd->dpc, arg);
+		dpc_enqueue(&kbd->dpc_, arg);
 
 		return IRQ_ACK;
 	}
@@ -127,7 +245,10 @@ class Ps2Kbd final : public Device {
 		auto acpidev = provider->safe_cast<AcpiDevice>();
 		auto node = acpidev->node_;
 
-		dpc_init(&dpc, dpc_handler);
+		dpc_init(&dpc_, dpc_handler);
+
+		spinlock_init(&buf_lock);
+		ringbuffer_init(&buf_, RINGBUF_SIZE);
 
 		uacpi_resources *kb_res;
 		uacpi_status ret = uacpi_get_current_resources(node, &kb_res);
@@ -162,15 +283,16 @@ class Ps2Kbd final : public Device {
 
     private:
 	irq_object irqobj_;
-	dpc dpc;
+	dpc dpc_;
 	uint8_t gsi_ = -1;
 	uint16_t data_port_ = -1;
 	uint16_t cmd_port_ = -1;
 
-	uint16_t head = 0;
-	uint16_t tail = 0;
-	uint8_t buf[RINGBUF_SIZE];
+	struct spinlock buf_lock;
+	struct ringbuffer buf_;
 
+	bool ctrl = false;
+	bool alt = false;
 	bool shifted = false;
 };
 

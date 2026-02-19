@@ -216,7 +216,7 @@ isr_common:
 	.quad isrStub\num
 .endm
 
-	.rodata
+	.section .rodata
 	.global itable
 	.balign 16
 itable:

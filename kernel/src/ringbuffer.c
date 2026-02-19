@@ -21,6 +21,21 @@ status_t ringbuffer_init(struct ringbuffer *rb, size_t cap)
 	return YAK_SUCCESS;
 }
 
+status_t ringbuffer_static_init(struct ringbuffer *rb, size_t cap,
+				void *backing)
+{
+	if (!rb || !cap || !backing)
+		return YAK_INVALID_ARGS;
+
+	rb->data = backing;
+	rb->capacity = cap;
+	rb->head = 0;
+	rb->tail = 0;
+	rb->size = 0;
+
+	return YAK_SUCCESS;
+}
+
 void ringbuffer_destroy(struct ringbuffer *rb)
 {
 	assert(rb);

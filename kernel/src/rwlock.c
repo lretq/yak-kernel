@@ -11,8 +11,8 @@
 
 void rwlock_init(struct rwlock *rwlock, [[maybe_unused]] const char *name)
 {
-	event_init(&rwlock->event, 0);
-#ifdef CONFIG_DEBUG
+	event_init(&rwlock->event, 0, 0);
+#if CONFIG_DEBUG
 	rwlock->name = name;
 #endif
 	rwlock->state = 0;
@@ -22,6 +22,8 @@ void rwlock_init(struct rwlock *rwlock, [[maybe_unused]] const char *name)
 
 status_t rwlock_acquire_shared(struct rwlock *rwlock, nstime_t timeout)
 {
+	assert(rwlock);
+
 	status_t status;
 
 	do {
@@ -44,11 +46,9 @@ status_t rwlock_acquire_shared(struct rwlock *rwlock, nstime_t timeout)
 		}
 
 wait:
-		status = sched_wait_single(&rwlock->event, WAIT_MODE_BLOCK,
-					   WAIT_TYPE_ALL, timeout);
+		status = sched_wait(&rwlock->event, WAIT_MODE_BLOCK, timeout);
 
-		IF_ERR(status)
-		{
+		if (IS_ERR(status)) {
 			return status;
 		}
 
@@ -67,7 +67,7 @@ void rwlock_release_shared(struct rwlock *rwlock)
 	// only alarm when we're the last one
 	// No need to wake up exclusive waiters if there is still someone left
 	if ((prev & RWLOCK_READER_MASK) == 1)
-		event_alarm(&rwlock->event);
+		event_alarm(&rwlock->event, false);
 }
 
 status_t rwlock_acquire_exclusive(struct rwlock *rwlock, nstime_t timeout)
@@ -99,8 +99,7 @@ status_t rwlock_acquire_exclusive(struct rwlock *rwlock, nstime_t timeout)
 		// someone was faster than us, wait for release
 
 wait:
-		status = sched_wait_single(&rwlock->event, WAIT_MODE_BLOCK,
-					   WAIT_TYPE_ALL, timeout);
+		status = sched_wait(&rwlock->event, WAIT_MODE_BLOCK, timeout);
 
 		IF_ERR(status)
 		{
@@ -118,7 +117,7 @@ void rwlock_release_exclusive(struct rwlock *rwlock)
 	__atomic_fetch_sub(&rwlock->exclusive_count, 1, __ATOMIC_ACQ_REL);
 	__atomic_store_n(&rwlock->exclusive_owner, NULL, __ATOMIC_RELEASE);
 	__atomic_fetch_and(&rwlock->state, ~RWLOCK_EXCLUSIVE, __ATOMIC_RELEASE);
-	event_alarm(&rwlock->event);
+	event_alarm(&rwlock->event, false);
 }
 
 void rwlock_upgrade_to_exclusive(struct rwlock *rwlock)

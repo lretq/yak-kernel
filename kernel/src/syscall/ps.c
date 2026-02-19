@@ -13,7 +13,10 @@
 
 DEFINE_SYSCALL(SYS_EXIT, exit, int rc)
 {
-	pr_debug("sys_exit() is a stub: exit with code %d\n", rc);
+	struct kprocess *proc = curproc();
+	process_set_exit_status(proc, EXIT_STATUS(rc));
+	pr_warn("sys_exit: we have to kill our sibling threads (pid=%llu)\n",
+		proc->pid);
 	sched_exit_self();
 }
 
@@ -24,7 +27,8 @@ DEFINE_SYSCALL(SYS_GETPID, getpid)
 
 DEFINE_SYSCALL(SYS_GETPPID, getppid)
 {
-	return SYS_OK(curproc()->ppid);
+	pid_t ppid = __atomic_load_n(&curproc()->ppid, __ATOMIC_ACQUIRE);
+	return SYS_OK(ppid);
 }
 
 DEFINE_SYSCALL(SYS_SETSID, setsid)
@@ -42,17 +46,15 @@ DEFINE_SYSCALL(SYS_SETPGID, setpgid, pid_t pid, pid_t pgid)
 	}
 
 	struct kprocess *cur_proc = curproc();
-	struct kprocess *proc;
+
+	struct kprocess *proc = NULL;
+
 	if (pid == 0) {
 		proc = cur_proc;
 	} else {
 		proc = lookup_pid(pid);
-		if (!proc)
+		if (proc == NULL)
 			return SYS_ERR(ESRCH);
-	}
-
-	if (proc->session != cur_proc->session) {
-		return SYS_ERR(EPERM);
 	}
 
 	if (proc != cur_proc && proc->parent_process != cur_proc) {
@@ -95,7 +97,6 @@ DEFINE_SYSCALL(SYS_GETSID, getsid, pid_t pid)
 DEFINE_SYSCALL(SYS_SLEEP, sleep, struct timespec *req, struct timespec *rem)
 {
 	nstime_t sleep_ns = STIME(req->tv_sec) + req->tv_nsec;
-	pr_extra_debug("sys_sleep() for %lx ns\n", sleep_ns);
 	nstime_t start = plat_getnanos();
 	ksleep(sleep_ns);
 	nstime_t time_passed = plat_getnanos() - start;

@@ -137,15 +137,16 @@ void FillScreen(uint32_t Color)
 }
 
 #include <limine.h>
-extern volatile struct limine_framebuffer_request fb_request;
 
+extern struct limine_framebuffer limine_fb0_copy;
 extern size_t kinfo_height_start;
+
+#include <yak/log.h>
 
 // Initializes the graphics backend.
 void Init()
 {
-	struct limine_framebuffer *FrameBuffer =
-		fb_request.response->framebuffers[0];
+	struct limine_framebuffer *FrameBuffer = &limine_fb0_copy;
 
 	PixBuff = FrameBuffer->address;
 	PixWidth = FrameBuffer->width;
@@ -174,7 +175,7 @@ unsigned RandTscBased()
 }
 
 int g_randGen = 0x9521af17;
-__no_prof __inline __no_san int Rand()
+__no_prof __no_san static inline int Rand()
 {
 	g_randGen += (int)0xe120fc15;
 	uint64_t tmp = (uint64_t)g_randGen * 0x4a39b70d;
@@ -198,12 +199,11 @@ typedef int64_t FixedPoint;
 #define MUL_FP_FP(Fp1, Fp2) (((Fp1) * (Fp2)) >> FIXED_POINT)
 
 // Gets a random representing between 0. and 1. in fixed point.
-FixedPoint RandFP()
+__no_prof __no_san static inline FixedPoint RandFP()
 {
 	return Rand() % (1 << FIXED_POINT);
 }
-
-FixedPoint RandFPSign()
+__no_prof __no_san static inline FixedPoint RandFPSign()
 {
 	if (Rand() % 2)
 		return -RandFP();
@@ -212,12 +212,12 @@ FixedPoint RandFPSign()
 
 #include "sintab.h"
 
-__no_prof __inline __no_san FixedPoint Sin(int Angle)
+__no_prof __no_san static inline FixedPoint Sin(int Angle)
 {
 	return INT_TO_FP(SinTable[Angle % 65536]) / 32768;
 }
 
-FixedPoint Cos(int Angle)
+__no_prof __no_san static inline FixedPoint Cos(int Angle)
 {
 	return Sin(Angle + 16384);
 }
@@ -232,7 +232,7 @@ typedef struct _FIREWORK_DATA {
 	int m_explosionRange;
 } FIREWORK_DATA, *PFIREWORK_DATA;
 
-__no_prof __no_san __inline uint32_t GetRandomColor()
+__no_prof __no_san static inline uint32_t GetRandomColor()
 {
 	return (Rand() + 0x808080) & 0xFFFFFF;
 }
@@ -404,7 +404,7 @@ void PerformFireworksTest()
 			}
 
 			PerformDelay(3000 + Rand() % 2000, NULL);
-			//PerformDelay(100 + Rand() % 2000, NULL);
+			//PerformDelay(400 + Rand() % 2000, NULL);
 		}
 		//PerformDelay(500 + Rand() % 5000, NULL);
 	}

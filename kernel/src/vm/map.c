@@ -40,6 +40,17 @@ struct vm_map *kmap()
 	return &kernel_map;
 }
 
+static struct vm_map_entry *alloc_map_entry()
+{
+	// XXX: slab
+	return kzalloc(sizeof(struct vm_map_entry));
+}
+
+static void free_map_entry(struct vm_map_entry *entry)
+{
+	kfree(entry, sizeof(struct vm_map_entry));
+}
+
 status_t vm_map_init(struct vm_map *map)
 {
 	rwlock_init(&map->map_lock, "map_lock");
@@ -55,16 +66,25 @@ status_t vm_map_init(struct vm_map *map)
 	return YAK_SUCCESS;
 }
 
-static struct vm_map_entry *alloc_map_entry()
+void vm_map_destroy(struct vm_map *map)
 {
-	// XXX: slab
-	return kzalloc(sizeof(struct vm_map_entry));
-}
+	EXPECT(rwlock_acquire_exclusive(&map->map_lock, TIMEOUT_INFINITE));
 
-[[maybe_unused]]
-static void free_map_entry(struct vm_map_entry *entry)
-{
-	kfree(entry, sizeof(struct vm_map_entry));
+	while (!RBT_EMPTY(vm_map_rbtree, &map->map_tree)) {
+		struct vm_map_entry *entry =
+			RBT_ROOT(vm_map_rbtree, &map->map_tree);
+		RBT_REMOVE(vm_map_rbtree, &map->map_tree, entry);
+
+		if (entry->type == VM_MAP_ENT_OBJ) {
+			if (entry->amap)
+				vm_amap_deref(entry->amap);
+			vm_object_deref(entry->object);
+		}
+
+		free_map_entry(entry);
+	}
+
+	pmap_destroy(&map->pmap);
 }
 
 static void init_map_entry(struct vm_map_entry *entry, voff_t offset,
@@ -105,7 +125,7 @@ const char *entry_type(struct vm_map_entry *entry)
 	return "<unknown>";
 }
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 void vm_map_dump(struct vm_map *map)
 {
 	struct vm_map_entry *entry;
@@ -623,20 +643,37 @@ struct vm_map_entry *vm_map_lookup_entry_locked(struct vm_map *map,
 
 void vm_map_activate(struct vm_map *map)
 {
-	pmap_activate(&map->pmap);
-	curcpu().current_map = map;
+	assert(map);
+
+	struct cpu *cpu = curcpu_ptr();
+
+	struct vm_map *old = cpu->current_map;
+
+	if (old != map) {
+		pmap_activate(&map->pmap);
+	}
+
+	cpu->current_map = map;
+
+	if (old != NULL) {
+		bitset_atomic_clear(&old->pmap.mapped_on, cpu->cpu_id);
+	}
+	bitset_atomic_set(&map->pmap.mapped_on, cpu->cpu_id);
 }
 
-void vm_map_tmp_switch(struct vm_map *map)
+struct vm_map *vm_map_tmp_switch(struct vm_map *map)
 {
+	struct vm_map *orig = curcpu().current_map;
 	curthread()->vm_ctx = map;
 	vm_map_activate(map);
+	return orig;
 }
 
-void vm_map_tmp_disable()
+void vm_map_tmp_disable(struct vm_map *map)
 {
 	assert(curthread()->vm_ctx);
 	curthread()->vm_ctx = NULL;
+	vm_map_activate(map);
 }
 
 status_t vm_map_fork(struct vm_map *from, struct vm_map *to)

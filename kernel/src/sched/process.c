@@ -1,6 +1,12 @@
+#include <yak/file.h>
+#include <yak/vm/map.h>
+#include <yak/queue.h>
+#include <yak/semaphore.h>
 #include <yak/heap.h>
 #include <yak/init.h>
+#include <yak/log.h>
 #include <yak/status.h>
+#include <yak/jobctl.h>
 #include <stdint.h>
 #include <string.h>
 #include <yak/process.h>
@@ -25,13 +31,13 @@ struct id_map pgid_table;
 // for now: hash(pid) = pid
 static hash_t hash_id(const void *key, [[maybe_unused]] const size_t key_len)
 {
-	return (pid_t)key;
+	return *(const pid_t *)key;
 }
 
 static bool eq_id(const void *a, const void *b,
 		  [[maybe_unused]] const size_t key_len)
 {
-	return (pid_t)a == (pid_t)b;
+	return *(const pid_t *)a == *(const pid_t *)b;
 }
 
 static void id_map_init(struct id_map *t)
@@ -93,8 +99,15 @@ void kprocess_init(struct kprocess *process)
 {
 	memset(process, 0, sizeof(struct kprocess));
 
+	process->state = PROC_ALIVE;
+	process->exit_status = 0;
+	semaphore_init(&process->wait_semaphore, 0);
+
 	process->pid = __atomic_fetch_add(&next_pid, 1, __ATOMIC_SEQ_CST);
 	process->parent_process = NULL;
+
+	kmutex_init(&process->child_list_lock, "proc_child_list");
+	LIST_INIT(&process->child_list);
 
 	spinlock_init(&process->thread_list_lock);
 	LIST_INIT(&process->thread_list);
@@ -123,7 +136,14 @@ void uprocess_init(struct kprocess *process, struct kprocess *parent)
 	process->session = NULL;
 	process->pgrp = NULL;
 
+	spinlock_init(&process->fs_lock);
+	process->cwd = NULL;
+	process_setcwd(process, vfs_getroot());
+
 	id_map_push(&pid_table, process->pid, process);
+
+	guard(mutex)(&parent->child_list_lock);
+	LIST_INSERT_HEAD(&parent->child_list, process, child_list_entry);
 }
 
 void proc_init()
@@ -131,6 +151,88 @@ void proc_init()
 	id_map_init(&pid_table);
 	id_map_init(&sid_table);
 	id_map_init(&pgid_table);
+}
+
+struct vnode *process_getcwd(struct kprocess *proc)
+{
+	ipl_t ipl = spinlock_lock(&proc->fs_lock);
+	struct vnode *vn = curproc()->cwd;
+	assert(vn);
+	vnode_ref(vn);
+	spinlock_unlock(&proc->fs_lock, ipl);
+	return vn;
+}
+
+void process_setcwd(struct kprocess *proc, struct vnode *vn)
+{
+	ipl_t ipl = spinlock_lock(&proc->fs_lock);
+	struct vnode *old_cwd = proc->cwd;
+	proc->cwd = vn;
+	spinlock_unlock(&proc->fs_lock, ipl);
+	if (old_cwd)
+		vnode_deref(old_cwd);
+}
+
+void process_set_exit_status(struct kprocess *proc, int status)
+{
+	// don't overwrite the exit status (e.g. we exit and handle a SIGKILL concurrently)
+	if (!__atomic_test_and_set(&proc->is_exiting, __ATOMIC_ACQ_REL)) {
+		__atomic_store_n(&proc->exit_status, status, __ATOMIC_RELEASE);
+	}
+}
+
+void process_destroy(struct kprocess *process)
+{
+	if (process->pid == 0 || process->pid == 1)
+		panic("try to destroy init or kernel\n");
+
+	// biggest memory hog; get rid of this first
+	vm_map_destroy(process->map);
+
+	ipl_t ipl = spinlock_lock(&process->jobctl_lock);
+	pgrp_remove(process);
+	session_remove(process);
+	spinlock_unlock(&process->jobctl_lock, ipl);
+
+	{
+		struct kprocess *init_process = lookup_pid(1);
+		assert(init_process);
+
+		guard(mutex)(&process->child_list_lock);
+		while (!LIST_EMPTY(&process->child_list)) {
+			struct kprocess *child =
+				LIST_FIRST(&process->child_list);
+			LIST_REMOVE(child, child_list_entry);
+
+			ipl_t ipl = spinlock_lock(&child->thread_list_lock);
+			__atomic_store_n(&child->ppid, 1, __ATOMIC_RELEASE);
+			child->parent_process = init_process;
+			spinlock_unlock(&child->thread_list_lock, ipl);
+
+			guard(mutex)(&init_process->child_list_lock);
+			LIST_INSERT_HEAD(&init_process->child_list, child,
+					 child_list_entry);
+		}
+	}
+
+	// Remove from pid->process map
+	id_map_remove(&pid_table, process->pid);
+
+	assert(LIST_EMPTY(&process->child_list));
+
+	{
+		guard(mutex)(&process->fd_mutex);
+		for (int i = 0; i < process->fd_cap; i++) {
+			struct fd *fd = process->fds[i];
+			if (fd != NULL) {
+				fd_close(process, i);
+			}
+		}
+		kfree(process->fds, process->fd_cap * sizeof(struct fd *));
+	}
+
+	vnode_deref(process->cwd);
+	process->cwd = NULL;
 }
 
 INIT_DEPS(proc);

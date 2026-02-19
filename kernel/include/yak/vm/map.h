@@ -73,6 +73,8 @@ struct vm_map *kmap();
  */
 status_t vm_map_init(struct vm_map *map);
 
+void vm_map_destroy(struct vm_map *map);
+
 /*!
  * @brief Allocate virtual address from the map arena
  *
@@ -158,13 +160,13 @@ status_t vm_map_fork(struct vm_map *from, struct vm_map *to);
 
 // i.e. for use during ELF loading from kernel thread -> user process
 // -> per thread vm context override
-void vm_map_tmp_switch(struct vm_map *map);
-void vm_map_tmp_disable();
+struct vm_map *vm_map_tmp_switch(struct vm_map *map);
+void vm_map_tmp_disable(struct vm_map *map);
 
 struct vm_map_entry *vm_map_lookup_entry_locked(struct vm_map *map,
 						vaddr_t address);
 
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
 void vm_map_dump(struct vm_map *map);
 #endif
 

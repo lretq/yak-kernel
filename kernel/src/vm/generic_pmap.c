@@ -1,3 +1,4 @@
+#include <yak/types.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -7,6 +8,7 @@
 #include <yak/arch-mm.h>
 #include <yak/arch-cpu.h>
 #include <yak/macro.h>
+#include <yak/ipi.h>
 #include <yak/vm.h>
 #include <yak/vm/pmap.h>
 #include <yak/vm/pmm.h>
@@ -15,6 +17,62 @@
 
 #define PTE_LOAD(p) (__atomic_load_n((p), __ATOMIC_SEQ_CST))
 #define PTE_STORE(p, x) (__atomic_store_n((p), (x), __ATOMIC_SEQ_CST))
+
+static void pmap_free_table_level(pte_t *table, size_t lvl)
+{
+	size_t limit = PMAP_LEVEL_ENTRIES[lvl];
+
+	// Dont free kernel page tables!
+	// XXX: is this universal or x86 specific?
+	if (lvl == PMAP_LEVELS - 1) {
+		limit /= 2;
+	}
+
+	for (size_t i = 0; i < limit; i++) {
+		pte_t *ptep = &table[i];
+		pte_t pte = PTE_LOAD(ptep);
+
+		if (pte_is_zero(pte)) {
+			continue;
+		}
+
+		if (lvl != 0 && !pte_is_large(pte, lvl)) {
+			uintptr_t pa = pte_paddr(pte);
+			pte_t *child = (pte_t *)p2v(pa);
+			pmap_free_table_level(child, lvl - 1);
+			pmm_free(pa);
+		} else {
+			PTE_STORE(ptep, 0);
+		}
+	}
+}
+
+static bool is_pmap_mapped(struct pmap *pmap)
+{
+	for (size_t i = 0; i < elementsof(pmap->mapped_on.bits); i++) {
+		if (pmap->mapped_on.bits[i] != 0)
+			return true;
+	}
+
+	return false;
+}
+
+void pmap_destroy(struct pmap *pmap)
+{
+	assert(pmap->top_level != 0);
+	assert(pmap != &kmap()->pmap);
+	if (is_pmap_mapped(pmap)) {
+		panic("destroy pmap that is still mapped!\n");
+	}
+
+	pte_t *toplevel = (pte_t *)p2v(pmap->top_level);
+
+	pmap_free_table_level(toplevel, PMAP_LEVELS - 1);
+
+	pmm_free(pmap->top_level);
+
+	pmap->top_level = 0;
+}
 
 static pte_t *pte_fetch(struct pmap *pmap, uintptr_t va, size_t atLevel,
 			int alloc)
@@ -29,9 +87,9 @@ static pte_t *pte_fetch(struct pmap *pmap, uintptr_t va, size_t atLevel,
 	}
 
 	for (size_t lvl = PMAP_LEVELS - 1;; lvl--) {
-		assert(lvl >= 0 && lvl <= PMAP_LEVELS - 1);
+		//assert(lvl <= PMAP_LEVELS - 1);
 		pte_t *ptep = &table[indexes[lvl]];
-		assert((uint64_t)ptep >= 0xffff800000000000);
+		//assert((uint64_t)ptep >= 0xffff800000000000);
 		pte_t pte = PTE_LOAD(ptep);
 
 		if (atLevel == lvl) {
@@ -56,6 +114,77 @@ static pte_t *pte_fetch(struct pmap *pmap, uintptr_t va, size_t atLevel,
 	}
 
 	return NULL;
+}
+
+static inline void pmap_invalidate(vaddr_t va)
+{
+	asm volatile("invlpg (%0)" ::"r"(va) : "memory");
+}
+
+static inline void pmap_flush_tlb()
+{
+	uint64_t pml4;
+	asm volatile("mov %%cr3, %0" : "=r"(pml4));
+	asm volatile("mov %0, %%cr3" : : "r"(pml4) : "memory");
+}
+
+static void pmap_invalidate_range(vaddr_t va, size_t length, size_t pgsz)
+{
+	for (size_t i = 0; i < length; i += pgsz) {
+		pmap_invalidate(va + i);
+	}
+}
+
+struct shootdown_context {
+	vaddr_t va;
+	size_t length;
+	bool kernel;
+#ifdef PMAP_HAS_LARGE_PAGE_SIZES
+	size_t level;
+#endif
+};
+
+static void shootdown_handler(void *ctx)
+{
+	struct shootdown_context *shootdown_ctx = ctx;
+	vaddr_t va = shootdown_ctx->va;
+	size_t len = shootdown_ctx->length;
+
+#ifdef PMAP_HAS_LARGE_PAGE_SIZES
+	size_t level = shootdown_ctx->level;
+	size_t pgsz = level == 0 ? PAGE_SIZE : PMAP_LARGE_PAGE_SIZES[level - 1];
+#else
+	size_t pgsz = PAGE_SIZE;
+#endif
+
+	// more efficient to just flush the whole thing altogether
+	if ((len >> PAGE_SHIFT) >= 64) {
+		pmap_flush_tlb();
+	} else {
+		pmap_invalidate_range(va, len, pgsz);
+	}
+}
+
+size_t n_shootdowns = 0;
+
+static void do_tlb_shootdown(struct pmap *pmap, vaddr_t va, size_t length,
+			     size_t level)
+{
+	if (cpus_online() == 1)
+		return;
+
+	__atomic_fetch_add(&n_shootdowns, 1, __ATOMIC_RELAXED);
+
+	struct shootdown_context ctx;
+	ctx.va = va;
+	ctx.length = length;
+	ctx.level = level;
+
+	struct cpumask *mask = &pmap->mapped_on;
+	if (pmap == &kmap()->pmap) {
+		mask = &cpumask_active;
+	}
+	ipi_mask_send(mask, shootdown_handler, &ctx, false, true);
 }
 
 void pmap_kernel_bootstrap(struct pmap *pmap)
@@ -85,11 +214,7 @@ void pmap_init(struct pmap *pmap)
 	}
 }
 
-static inline void pmap_invalidate(vaddr_t va)
-{
-	asm volatile("invlpg (%0)" ::"r"(va) : "memory");
-}
-
+// It is much more efficient to first unmap_range something, and then to map!
 void pmap_map(struct pmap *pmap, uintptr_t va, uintptr_t pa, size_t level,
 	      vm_prot_t prot, vm_cache_t cache)
 {
@@ -104,10 +229,11 @@ void pmap_map(struct pmap *pmap, uintptr_t va, uintptr_t pa, size_t level,
 
 	if (!pte_is_zero(pte)) {
 		pmap_invalidate(va);
+		do_tlb_shootdown(pmap, va, PAGE_SIZE, 0);
 	}
 }
 
-paddr_t pmap_unmap(struct pmap *pmap, uintptr_t va, size_t level)
+static paddr_t do_unmap(struct pmap *pmap, vaddr_t va, size_t level)
 {
 	pte_t *ppte = pte_fetch(pmap, va, level, 0);
 	if (ppte) {
@@ -116,7 +242,15 @@ paddr_t pmap_unmap(struct pmap *pmap, uintptr_t va, size_t level)
 		pmap_invalidate(va);
 		return pte_paddr(pte);
 	}
-	return 0;
+	return UINTPTR_MAX;
+}
+
+paddr_t pmap_unmap(struct pmap *pmap, uintptr_t va, size_t level)
+{
+	paddr_t pa = do_unmap(pmap, va, level);
+	if (pa != UINTPTR_MAX)
+		do_tlb_shootdown(pmap, va, PAGE_SIZE, level);
+	return pa;
 }
 
 void pmap_protect_range(struct pmap *pmap, vaddr_t va, size_t length,
@@ -141,6 +275,8 @@ void pmap_protect_range(struct pmap *pmap, vaddr_t va, size_t length,
 			pmap_invalidate(va + i);
 		}
 	}
+
+	do_tlb_shootdown(pmap, va, length, level);
 }
 
 void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
@@ -152,7 +288,47 @@ void pmap_unmap_range(struct pmap *pmap, uintptr_t va, size_t length,
 	size_t pgsz = PAGE_SIZE;
 #endif
 	for (uintptr_t i = 0; i < length; i += pgsz) {
-		pmap_unmap(pmap, va + i, level);
+		do_unmap(pmap, va + i, level);
+	}
+
+	do_tlb_shootdown(pmap, va, length, level);
+}
+
+// 32 * 4k = 128kib
+#define FREE_BATCH 32
+
+void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t base, size_t length,
+			       size_t level)
+{
+	assert(level == 0);
+	size_t pgsz = PAGE_SIZE;
+
+	paddr_t batch[FREE_BATCH];
+	size_t batch_count = 0;
+
+	for (voff_t offset = 0; offset < length; offset += pgsz) {
+		vaddr_t vaddr = base + offset;
+		paddr_t pa = do_unmap(pmap, vaddr, level);
+		batch[batch_count++] = pa;
+
+		if (batch_count == FREE_BATCH) {
+			do_tlb_shootdown(pmap, vaddr - (FREE_BATCH - 1) * pgsz,
+					 FREE_BATCH * pgsz, level);
+
+			for (size_t i = 0; i < batch_count; i++) {
+				pmm_free(batch[i]);
+			}
+
+			batch_count = 0;
+		}
+	}
+
+	if (batch_count > 0) {
+		vaddr_t vaddr = base + length - batch_count * pgsz;
+		do_tlb_shootdown(pmap, vaddr, batch_count * pgsz, level);
+		for (size_t i = 0; i < batch_count; i++) {
+			pmm_free(batch[i]);
+		}
 	}
 }
 

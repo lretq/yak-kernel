@@ -13,8 +13,8 @@ struct load_info {
 	size_t phent;
 };
 
-status_t elf_load_path(char *path, struct kprocess *process,
+status_t elf_load_path(char *path, struct vm_map *map,
 		       struct load_info *loadinfo, uintptr_t base);
 
-status_t elf_load(struct vnode *vn, struct kprocess *process,
+status_t elf_load(struct vnode *vn, struct vm_map *map,
 		  struct load_info *loadinfo, uintptr_t base);

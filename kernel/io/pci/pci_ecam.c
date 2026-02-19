@@ -38,10 +38,10 @@ static uint32_t pci_ecam_read(uint32_t segment, uint32_t bus, uint32_t slot,
 	}
 
 	volatile uint32_t *addr =
-		(volatile uint32_t *)(entry->address +
+		(volatile uint32_t *)(entry->address +(
 					      ((bus - entry->start_bus) << 20 |
 					       slot << 15 | function << 12) |
-				      (offset & ~0x3));
+				      (offset & ~0x3)));
 	return *addr;
 }
 
@@ -56,9 +56,9 @@ static void pci_ecam_write(uint32_t segment, uint32_t bus, uint32_t slot,
 
 	volatile uint32_t *addr =
 		(volatile uint32_t *)(entry->address +
-					      ((bus - entry->start_bus) << 20 |
+					      (((bus - entry->start_bus) << 20 |
 					       slot << 15 | function << 12) |
-				      (offset & ~0x3));
+				      (offset & ~0x3)));
 
 	*addr = value;
 }

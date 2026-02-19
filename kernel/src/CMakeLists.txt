@@ -1,3 +1,10 @@
+add_subdirectory(vm)
+add_subdirectory(rt)
+add_subdirectory(fs)
+add_subdirectory(irq)
+add_subdirectory(syscall)
+add_subdirectory(sched)
+
 yak_add_sources(
 	cpudata.c
 	init.c
@@ -14,46 +21,11 @@ yak_add_sources(
 	hashtable.c
 	printk.c
 	root.c
-	rt/assert.c
-	rt/string.c
-	rt/ubsan.c
-	rt/cplusplus.cc
-	rt/stack.c
 	rwlock.c
 	semaphore.c
 	spinlock.c
 	mutex.c
 	jobctl.c
-	sched/launch.c
-	sched/process.c
-	sched/sched.c
-	sched/thread.c
-	sched/wait.c
-	syscall/file.c
-	syscall/fork.c
-	syscall/mmap.c
-	syscall/syscall.c
-	syscall/debug.c
-	syscall/ps.c
-	syscall/exec.c
 	file.c
-	fs/vfs.c
-	irq/dpc.c
-	irq/ipl.c
-	irq/irq.c
-	irq/softint.c
 	timer.c
-	vm/anon.c
-	vm/aobj.c
-	vm/amap.c
-	vm/fault.c
-	vm/generic_pmap.c
-	vm/heap.c
-	vm/map.c
-	vm/object.c
-	vm/page.c
-	vm/pmm.c
-
-	vm/kmem_slab.c
-	vm/vmem.c
 )
