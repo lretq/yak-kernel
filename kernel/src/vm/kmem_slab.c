@@ -1,8 +1,8 @@
-#include "yak/log.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <yak/log.h>
 #include <yak/queue.h>
 #include <yak/macro.h>
 #include <yak/mutex.h>

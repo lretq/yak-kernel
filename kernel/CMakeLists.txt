@@ -1,5 +1,17 @@
 add_executable(kernel)
 
+add_custom_command(TARGET kernel POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:kernel> $<TARGET_FILE:kernel>.debug
+    COMMAND ${CMAKE_STRIP} --strip-debug --strip-unneeded $<TARGET_FILE:kernel>
+    COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=$<TARGET_FILE:kernel>.debug $<TARGET_FILE:kernel>
+    COMMENT "Generating debug file for kernel"
+)
+
+add_custom_command(TARGET kernel POST_BUILD
+    COMMAND ${CMAKE_NM} $<TARGET_FILE:kernel>.debug > $<TARGET_FILE:kernel>.sym
+    COMMENT "Generating symbols file for kernel"
+)
+
 option(KERNEL_LTO "enable lto" OFF)
 
 if (KERNEL_LTO)
@@ -32,6 +44,10 @@ target_compile_options(kernel PRIVATE
 )
 
 target_compile_options(kernel PRIVATE
+    #-finstrument-functions
+)
+
+target_compile_options(kernel PRIVATE
      -fpie
      -fno-pic
      -mcmodel=kernel
@@ -50,14 +66,14 @@ target_compile_definitions(kernel
 	${YAK_ARCH}
 	ARCH_STR="${YAK_ARCH}"
 
-	CONFIG_LAZY_IPL=0
+	CONFIG_PROFILER=0
+	CONFIG_LAZY_IPL=1
 	CONFIG_SERIAL=1
 	CONFIG_SYSCALL_LOG=1
 	CONFIG_DEBUG=1
 	CONFIG_UBSAN=1
 
 	UACPI_NATIVE_ALLOC_ZEROED=1
-	UACPI_SIZED_FREES=1
 	FLANTERM_FB_DISABLE_BUMP_ALLOC=1
     PRIVATE
 	__YAK_PRIVATE__
@@ -65,4 +81,8 @@ target_compile_definitions(kernel
 
 install(TARGETS kernel
     RUNTIME DESTINATION share/yak
+)
+
+install(FILES ${CMAKE_BINARY_DIR}/kernel/kernel.sym
+    DESTINATION share/yak
 )

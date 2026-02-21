@@ -332,49 +332,70 @@ void pmap_unmap_range_and_free(struct pmap *pmap, uintptr_t base, size_t length,
 	}
 }
 
-void pmap_large_map_range(struct pmap *pmap, uintptr_t base, size_t length,
-			  uintptr_t virtual_base, vm_prot_t prot,
+void pmap_large_map_range(struct pmap *pmap, paddr_t base, size_t length,
+			  vaddr_t virtual_base, vm_prot_t prot,
 			  vm_cache_t cache)
 {
-	uintptr_t end = base + length;
-	uintptr_t curr = base;
+	paddr_t end = base + length;
+	paddr_t curr = base;
 
 	// map until aligned
 	while (curr < end) {
+		vaddr_t va = virtual_base + (curr - base);
+
+		size_t chosen_level = 0;
+		size_t chosen_size = PAGE_SIZE;
+
 #ifdef PMAP_HAS_LARGE_PAGE_SIZES
-		if (IS_ALIGNED_POW2(curr, PMAP_LARGE_PAGE_SIZES[0])) {
+		for (ssize_t i = elementsof(PMAP_LARGE_PAGE_SIZES) - 1; i >= 0;
+		     i--) {
+			size_t size = PMAP_LARGE_PAGE_SIZES[i];
+
+			if (curr + size > end)
+				continue;
+
+			if (!IS_ALIGNED_POW2(curr, size))
+				continue;
+
+			if (!IS_ALIGNED_POW2(va, size))
+				continue;
+
+			chosen_level = i + 1;
+			chosen_size = size;
 			break;
 		}
 #endif
-		pmap_map(pmap, virtual_base + curr - base, curr, 0, prot,
-			 cache);
-		curr += PAGE_SIZE;
-	}
 
-#ifdef PMAP_HAS_LARGE_PAGE_SIZES
-	for (size_t i = elementsof(PMAP_LARGE_PAGE_SIZES); i > 0; i--) {
-		while (curr < end) {
-			if (curr + PMAP_LARGE_PAGE_SIZES[i - 1] >= end ||
-			    !IS_ALIGNED_POW2(curr,
-					     PMAP_LARGE_PAGE_SIZES[i - 1])) {
-				goto outer;
+		if (chosen_level != 0) {
+			// map large page
+			pmap_map(pmap, va, curr, chosen_level, prot, cache);
+			curr += chosen_size;
+			continue;
+		}
+
+		size_t smallest_large = PMAP_LARGE_PAGE_SIZES[0];
+
+		size_t misalign = curr & (smallest_large - 1);
+		if (misalign != 0) {
+			size_t advance = smallest_large - misalign;
+
+			if (curr + advance > end)
+				advance = end - curr;
+
+			size_t pages = advance >> PAGE_SHIFT;
+
+			while (pages--) {
+				va = virtual_base + (curr - base);
+				pmap_map(pmap, va, curr, 0, prot, cache);
+				curr += PAGE_SIZE;
 			}
 
-			pmap_map(pmap, virtual_base - base + curr, curr, i,
-				 prot, cache);
-
-			curr += PMAP_LARGE_PAGE_SIZES[i - 1];
+			continue;
 		}
-outer:;
-	}
 
-	// map until end
-	while (curr < end) {
-		pmap_map(pmap, virtual_base - base + curr, curr, 0, prot,
-			 cache);
+		pmap_map(pmap, va, curr, 0, prot, cache);
 		curr += PAGE_SIZE;
 	}
-#endif
 
 	assert(curr == end);
 }

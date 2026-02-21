@@ -125,20 +125,54 @@ uacpi_status uacpi_kernel_io_write32(uacpi_handle handle, uacpi_size offset,
 }
 #endif
 
+#if 0
+#define BUMP_POOL_SIZE (16 * 1024 * 1024)
+static uint8_t bump_pool[BUMP_POOL_SIZE];
+static size_t bump_offset = 0;
+
+void *uacpi_kernel_alloc(uacpi_size size)
+{
+	size_t old_offset =
+		__atomic_fetch_add(&bump_offset, size, __ATOMIC_RELAXED);
+	if (old_offset + size > BUMP_POOL_SIZE)
+		return NULL; /* out of memory */
+	return &bump_pool[old_offset];
+	//return kmalloc(size);
+}
+
+#include <string.h>
+
+void *uacpi_kernel_alloc_zeroed(uacpi_size size)
+{
+	void *p = uacpi_kernel_alloc(size);
+	if (p)
+		memset(p, 0, size);
+	return p;
+	//return kzalloc(size);
+}
+
+void uacpi_kernel_free(void *mem)
+{
+	(void)mem;
+}
+#else
 void *uacpi_kernel_alloc(uacpi_size size)
 {
 	return kmalloc(size);
 }
 
+#include <string.h>
+
 void *uacpi_kernel_alloc_zeroed(uacpi_size size)
 {
-	return kcalloc(1, size);
+	return kzalloc(size);
 }
 
-void uacpi_kernel_free(void *mem, uacpi_size size_hint)
+void uacpi_kernel_free(void *mem)
 {
-	kfree(mem, size_hint);
+	kfree(mem, 0);
 }
+#endif
 
 uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
 {

@@ -29,4 +29,5 @@ yak_add_sources(
 	file.c
 	timer.c
 	console.c
+	symbol.c
 )

@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <yak/log.h>
 #include <yak/cpudata.h>
+#include <yak/symbol.h>
 
 typedef struct {
 	void *fn;
@@ -58,8 +59,6 @@ __attribute__((no_instrument_function)) static void printc(char c)
 
 __attribute__((no_instrument_function)) static void prints(const char *s)
 {
-	printk(0, "%s", s);
-	return;
 	for (char c = *s; c != 0; c = *++s)
 		printc(c);
 }
@@ -127,13 +126,14 @@ __attribute__((no_instrument_function)) void prof_show(const char *name)
 	for (size_t i = 0; i < num_records; i++) {
 		printu(i + 1);
 		prints(". ");
-		//Symbol *sym = symbols_lookup_by_addr((vaddr)records[i].fn);
-		//if (sym) {
-		//prints(sym->name);
-		//} else {
-		prints(". 0x");
-		printx((uintptr_t)records[i].fn);
-		//}
+		struct symbol *sym =
+			find_symbol_by_address(&ksym, (vaddr_t)records[i].fn);
+		if (sym) {
+			prints(sym->name);
+		} else {
+			prints("0x");
+			printx((uintptr_t)records[i].fn);
+		}
 		prints(": ");
 		printu(records[i].total);
 		prints(" (");

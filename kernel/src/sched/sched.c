@@ -254,6 +254,10 @@ void kthread_init(struct kthread *thread, const char *name,
 	spinlock_unlock(&process->thread_list_lock, ipl);
 
 	thread->owner_process = process;
+
+#if CONFIG_PROFILER
+	thread->cur_frame = 0;
+#endif
 }
 
 void sched_yield(struct kthread *current, struct cpu *cpu)
@@ -404,7 +408,7 @@ void sched_resume(struct kthread *thread)
 // This is the thread reaper
 // Once a process calls sched_destroy_self it frees all it's ressources
 // and wakes the reaper
-void thread_reaper_fn(void*)
+void thread_reaper_fn(void *)
 {
 	for (;;) {
 		sched_wait(&reaper_ev, WAIT_MODE_BLOCK, TIMEOUT_INFINITE);

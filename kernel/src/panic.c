@@ -4,6 +4,8 @@
 #include <yak/hint.h>
 #include <stdarg.h>
 
+#include <yak-private/profiler.h>
+
 static int in_panic;
 
 int is_in_panic()
@@ -11,8 +13,12 @@ int is_in_panic()
 	return __atomic_load_n(&in_panic, __ATOMIC_SEQ_CST);
 }
 
-__no_san __noreturn void panic(const char *fmt, ...)
+[[gnu::no_instrument_function, gnu::noreturn]]
+__no_san void panic(const char *fmt, ...)
 {
+#if CONFIG_PROFILER
+	prof_stop();
+#endif
 	va_list args;
 	va_start(args, fmt);
 

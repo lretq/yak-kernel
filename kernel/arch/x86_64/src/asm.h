@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <yak/hint.h>
 
 enum msr {
 	MSR_LAPIC_BASE = 0x1B,
@@ -75,13 +76,13 @@ static inline uint32_t inl(uint32_t port)
 }
 
 #define FN_CR(REG)                                                 \
-	static inline uint64_t read_cr##REG()                      \
+	static inline __no_prof uint64_t read_cr##REG()            \
 	{                                                          \
 		uint64_t data;                                     \
 		asm volatile("mov %%cr" #REG ", %0" : "=r"(data)); \
 		return data;                                       \
 	}                                                          \
-	static inline void write_cr##REG(uint64_t val)             \
+	static inline __no_prof void write_cr##REG(uint64_t val)             \
 	{                                                          \
 		asm volatile("mov %0, %%cr" #REG ::"a"(val));      \
 	}

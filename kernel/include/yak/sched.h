@@ -15,7 +15,7 @@ extern "C" {
 #include <yak/arch-sched.h>
 #include <yak/vm/map.h>
 
-#ifdef KERNEL_PROFILER
+#if CONFIG_PROFILER 
 #include <yak-private/profiler.h>
 #endif
 
@@ -98,7 +98,7 @@ struct kthread {
 
 	struct kprocess *owner_process;
 
-#ifdef KERNEL_PROFILER
+#if CONFIG_PROFILER
 	call_frame_t frames[MAX_FRAMES];
 	size_t cur_frame;
 #endif

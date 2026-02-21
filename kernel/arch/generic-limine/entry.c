@@ -1,4 +1,5 @@
 #include "yak/init.h"
+#include "yak/symbol.h"
 #include <stdint.h>
 #include <string.h>
 #include <uacpi/uacpi.h>
@@ -146,14 +147,16 @@ void plat_mem_init()
 	uintptr_t kernel_pbase = address_request.response->physical_base;
 	uintptr_t kernel_vbase = address_request.response->virtual_base;
 
-#define MAP_SECTION(SECTION, VMFLAGS)                                         \
-	uintptr_t SECTION##_start =                                           \
-		ALIGN_DOWN((uintptr_t)__kernel_##SECTION##_start, PAGE_SIZE); \
-	uintptr_t SECTION##_end =                                             \
-		ALIGN_UP((uintptr_t)__kernel_##SECTION##_end, PAGE_SIZE);     \
-	pmap_large_map_range(kpmap,                                           \
-			     SECTION##_start - kernel_vbase + kernel_pbase,   \
-			     (SECTION##_end - SECTION##_start),               \
+#define MAP_SECTION(SECTION, VMFLAGS)                                          \
+	uintptr_t SECTION##_start =                                            \
+		ALIGN_DOWN((uintptr_t)__kernel_##SECTION##_start, PAGE_SIZE);  \
+	uintptr_t SECTION##_end =                                              \
+		ALIGN_UP((uintptr_t)__kernel_##SECTION##_end, PAGE_SIZE);      \
+	pr_info("map kernel section " #SECTION ": \t[%lx-%lx] " #VMFLAGS "\n", \
+		SECTION##_start, SECTION##_end);                               \
+	pmap_large_map_range(kpmap,                                            \
+			     SECTION##_start - kernel_vbase + kernel_pbase,    \
+			     (SECTION##_end - SECTION##_start),                \
 			     SECTION##_start, (VMFLAGS), VM_CACHE_DEFAULT);
 
 	MAP_SECTION(limine, VM_READ);
@@ -177,13 +180,30 @@ static void load_modules()
 	struct limine_module_response *res = module_request.response;
 	for (size_t i = 0; i < res->module_count; i++) {
 		struct limine_file *mod = res->modules[i];
-		initrd_unpack_tar("/", mod->address, mod->size);
+		if (strcmp(mod->string, "initrd") == 0) {
+			initrd_unpack_tar("/", mod->address, mod->size);
+		}
 	}
 }
 
 INIT_ENTAILS(boot_modules);
 INIT_DEPS(boot_modules, rootfs);
 INIT_NODE(boot_modules, load_modules);
+
+static void load_modules_early()
+{
+	struct limine_module_response *res = module_request.response;
+	for (size_t i = 0; i < res->module_count; i++) {
+		struct limine_file *mod = res->modules[i];
+		if (strcmp(mod->string, "symbols") == 0) {
+			load_symbols(&ksym, mod->address, mod->size);
+		}
+	}
+}
+
+INIT_ENTAILS(boot_modules_early, bsp_ready);
+INIT_DEPS(boot_modules_early, heap_node);
+INIT_NODE(boot_modules_early, load_modules_early);
 
 static void reclaim_memory()
 {

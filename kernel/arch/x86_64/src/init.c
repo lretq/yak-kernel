@@ -113,7 +113,7 @@ __no_san __used void plat_syscall_handler(struct syscall_frame *frame)
 
 // XXX: move this to a seperate .S file!
 // needs automatic struct offseting though. find out how to expose them.
-[[gnu::naked]]
+[[gnu::naked, gnu::no_instrument_function]]
 void _syscall_entry()
 {
 	asm volatile(

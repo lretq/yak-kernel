@@ -45,7 +45,8 @@ void kthread_context_init(struct kthread *thread, void *kstack_top,
 	}
 }
 
-__noreturn void kernel_enter_userspace(uint64_t ip, uint64_t sp)
+[[gnu::no_instrument_function, gnu::noreturn]]
+void kernel_enter_userspace(uint64_t ip, uint64_t sp)
 {
 	pr_debug("enter userspace: 0x%lx rsp: 0x%lx\n", ip, sp);
 
