@@ -113,9 +113,15 @@ void kthread_init(struct kthread *thread, const char *name,
 		  unsigned int initial_priority, struct kprocess *process,
 		  bool user_thread);
 
+typedef void (*kernel_thread_fn)(void *);
+
 status_t kernel_thread_create(const char *name, unsigned int priority,
-			      void *entry, void *context, int instant_launch,
-			      struct kthread **out);
+			      kernel_thread_fn entry, void *context,
+			      bool instant_launch, struct kthread **out);
+
+status_t kernel_thread_init(struct kthread *thread, const char *name,
+			    unsigned int priority, kernel_thread_fn entry,
+			    void *context, bool instant_launch);
 
 void kthread_destroy(struct kthread *thread);
 

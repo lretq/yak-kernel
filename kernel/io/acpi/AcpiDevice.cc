@@ -1,7 +1,7 @@
 #include <yak/log.h>
 #include <uacpi/utilities.h>
 #include <yakpp/Array.hh>
-#include <yio/Device.hh>
+#include <yio/Service.hh>
 #include <yakpp/Object.hh>
 #include <yio/IoRegistry.hh>
 #include <yio/acpi/AcpiDevice.hh>
@@ -12,8 +12,8 @@
 namespace yak::io
 {
 
-IO_OBJ_DEFINE(AcpiDevice, Device);
-#define super Device
+IO_OBJ_DEFINE(AcpiDevice, Service);
+#define super Service
 
 void AcpiDevice::initWithArgs(uacpi_namespace_node *node)
 {

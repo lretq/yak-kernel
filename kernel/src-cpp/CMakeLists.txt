@@ -3,4 +3,5 @@ yak_add_sources(
     Dictionary.cc
     Object.cc
     String.cc
+    Event.cc
 )

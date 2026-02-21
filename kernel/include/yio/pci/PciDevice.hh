@@ -7,7 +7,7 @@
 namespace yak::io
 {
 
-struct PciDevice : public Device {
+struct PciDevice : public Service {
 	IO_OBJ_DECLARE(PciDevice);
 
     public:

@@ -16,8 +16,8 @@
 namespace yak::io
 {
 
-IO_OBJ_DEFINE(PlatformExpert, Device)
-#define super Device
+IO_OBJ_DEFINE(PlatformExpert, Service)
+#define super Service
 
 static uacpi_iteration_decision
 acpi_ns_enum(void *provider, uacpi_namespace_node *node,
@@ -25,18 +25,18 @@ acpi_ns_enum(void *provider, uacpi_namespace_node *node,
 {
 	auto device = IO_OBJ_CREATE(AcpiDevice);
 	device->initWithArgs(node);
-	((Device *)provider)->attachChild(device);
+	((Service *)provider)->attachChild(device);
 	device->release();
 	return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
-struct AcpiNamespace : public Device {
+struct AcpiNamespace : public Service {
 	IO_OBJ_DECLARE(AcpiNamespace);
 
     public:
-	bool start(Device *provider) override
+	bool start(Service *provider) override
 	{
-		if (!Device::start(provider))
+		if (!Service::start(provider))
 			return false;
 
 		uacpi_namespace_for_each_child(uacpi_namespace_root(),
@@ -48,11 +48,11 @@ struct AcpiNamespace : public Device {
 	}
 };
 
-IO_OBJ_DEFINE(AcpiNamespace, Device);
+IO_OBJ_DEFINE(AcpiNamespace, Service);
 
 struct interrupt_override isr_overrides[16];
 
-struct IOApic : public Device {
+struct IOApic : public Service {
 	IO_OBJ_DECLARE(IOApic);
 
     private:
@@ -117,12 +117,12 @@ struct IOApic : public Device {
 	vaddr_t base_;
 };
 
-IO_OBJ_DEFINE(IOApic, Device);
+IO_OBJ_DEFINE(IOApic, Service);
 
 IOApic *ioapics[8] = { nullptr };
 size_t ioapic_count = 0;
 
-struct CpuNamespace : public Device {
+struct CpuNamespace : public Service {
 	IO_OBJ_DECLARE(CpuNamespace);
 
     private:
@@ -144,7 +144,7 @@ struct CpuNamespace : public Device {
 	{
 		acpi_madt_ioapic *ent =
 			reinterpret_cast<acpi_madt_ioapic *>(item);
-		Device *provider = static_cast<Device *>(arg);
+		Service *provider = static_cast<Service *>(arg);
 
 		auto ioapic = IO_OBJ_CREATE(IOApic);
 		ioapic->initWithArgs(ent->id, ent->gsi_base, ent->address);
@@ -170,9 +170,9 @@ struct CpuNamespace : public Device {
 	}
 
     public:
-	bool start(Device *provider) override
+	bool start(Service *provider) override
 	{
-		if (!Device::start(provider))
+		if (!Service::start(provider))
 			return false;
 
 		uacpi_table tbl;
@@ -200,7 +200,7 @@ struct CpuNamespace : public Device {
 	}
 };
 
-IO_OBJ_DEFINE(CpuNamespace, Device);
+IO_OBJ_DEFINE(CpuNamespace, Service);
 
 extern "C" void arch_program_intr(uint8_t irq, irq_vec_t vector, int masked)
 {
@@ -266,9 +266,9 @@ INIT_ENTAILS(early_expert, early_io, bsp_ready);
 INIT_DEPS(early_expert, early_acpi_stage);
 INIT_NODE(early_expert, c_expert_early_start);
 
-bool PlatformExpert::start(Device *provider)
+bool PlatformExpert::start(Service *provider)
 {
-	if (!Device::start(provider))
+	if (!Service::start(provider))
 		return false;
 
 	AcpiNamespace *acpi_root_dev;

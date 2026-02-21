@@ -1,6 +1,6 @@
 #pragma once
 
-#include <yio/Device.hh>
+#include <yio/Service.hh>
 #include <yio/IoRegistry.hh>
 #include <yakpp/Array.hh>
 #include <uacpi/utilities.h>
@@ -8,7 +8,7 @@
 namespace yak::io
 {
 
-struct AcpiDevice : public Device {
+struct AcpiDevice : public Service {
 	IO_OBJ_DECLARE(AcpiDevice);
 
     public:

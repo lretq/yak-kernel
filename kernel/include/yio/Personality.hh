@@ -12,7 +12,7 @@ struct Personality : public Object {
 	friend class IoRegistry;
 
     public:
-	virtual const ClassInfo *getDeviceClass() const = 0;
+	virtual const ClassInfo *getDriverClass() const = 0;
 	virtual bool isEqual(Object *other) const override = 0;
 
     private:

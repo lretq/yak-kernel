@@ -49,7 +49,7 @@ class PciPersonality : public Personality {
 		return false;
 	}
 
-	constexpr const ClassInfo *getDeviceClass() const override
+	constexpr const ClassInfo *getDriverClass() const override
 	{
 		return driver;
 	}

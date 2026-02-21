@@ -38,7 +38,7 @@ void ipi_test(void *)
 	pr_warn("IPI TEST!\n");
 }
 
-void kmain()
+void kmain(void *)
 {
 	pr_info("enter kmain() thread\n");
 

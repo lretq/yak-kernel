@@ -4,7 +4,8 @@
 #include <string.h>
 #include <yakpp/meta.hh>
 
-namespace yak {
+namespace yak
+{
 
 class Object {
     public:
@@ -21,7 +22,7 @@ class Object {
 		return false;
 	}
 
-	bool isKindOf(ClassInfo *classInfo) const
+	bool isKindOf(const ClassInfo *classInfo) const
 	{
 		return isKindOf(classInfo->className);
 	}
@@ -50,6 +51,11 @@ class Object {
 	}
 
 	virtual bool isEqual(Object *other) const;
+
+	template <typename T> constexpr T *cast()
+	{
+		return static_cast<T *>(this);
+	}
 
 	template <typename T> T *safe_cast()
 	{

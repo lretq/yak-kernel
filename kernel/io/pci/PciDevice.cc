@@ -12,12 +12,12 @@
 namespace yak::io
 {
 
-IO_OBJ_DEFINE(PciDevice, Device);
+IO_OBJ_DEFINE(PciDevice, Service);
 #define super Device
 
 void PciDevice::init()
 {
-	Device::init();
+	Service::init();
 }
 
 void PciDevice::initWithPci(uint32_t segment, uint32_t bus, uint32_t slot,

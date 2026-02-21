@@ -1,6 +1,6 @@
 yak_add_sources(
     init.cc
-    Device.cc
+    Service.cc
     Registry.cc
     WorkLoop.cc
     TreeNode.cc

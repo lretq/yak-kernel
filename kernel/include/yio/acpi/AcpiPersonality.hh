@@ -18,7 +18,7 @@ struct AcpiPersonality : public Personality {
 		return false;
 	}
 
-	const ClassInfo *getDeviceClass() const override
+	const ClassInfo *getDriverClass() const override
 	{
 		return clazz;
 	}

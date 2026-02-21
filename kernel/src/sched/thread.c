@@ -47,13 +47,30 @@ void kthread_destroy(struct kthread *thread)
 }
 
 status_t kernel_thread_create(const char *name, unsigned int priority,
-			      void *entry, void *context, int instant_launch,
-			      struct kthread **out)
+			      kernel_thread_fn entry, void *context,
+			      bool instant_launch, struct kthread **out)
 {
 	struct kthread *thread = kmalloc(sizeof(struct kthread));
 	if (!thread)
 		return YAK_OOM;
 
+	status_t rv = kernel_thread_init(thread, name, priority, entry, context,
+					 instant_launch);
+	if (IS_ERR(rv)) {
+		kfree(thread, sizeof(struct kthread));
+		return rv;
+	}
+
+	if (out != NULL)
+		*out = thread;
+
+	return YAK_SUCCESS;
+}
+
+status_t kernel_thread_init(struct kthread *thread, const char *name,
+			    unsigned int priority, kernel_thread_fn entry,
+			    void *context, bool instant_launch)
+{
 	kthread_init(thread, name, priority, &kproc0, 0);
 
 	vaddr_t stack_addr = (vaddr_t)vm_kalloc(KSTACK_SIZE, 0);
@@ -66,9 +83,6 @@ status_t kernel_thread_create(const char *name, unsigned int priority,
 	void *stack_top = (void *)(stack_addr + KSTACK_SIZE);
 
 	kthread_context_init(thread, stack_top, entry, context, NULL);
-
-	if (out != NULL)
-		*out = thread;
 
 	if (instant_launch)
 		sched_resume(thread);

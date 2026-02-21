@@ -1,12 +1,12 @@
 #pragma once
 
-#include <yio/Device.hh>
+#include <yio/Service.hh>
 #include <stdint.h>
 
 namespace yak::io
 {
 
-struct PciBus : public Device {
+struct PciBus : public Service {
 	IO_OBJ_DECLARE(PciBus);
 
     public:
@@ -16,7 +16,7 @@ struct PciBus : public Device {
 			  uint32_t bus, uint32_t slot, uint32_t function,
 			  PciBus *parentBus = nullptr);
 
-	bool start(Device *provider) override;
+	bool start(Service *provider) override;
 
 	PciBus *parentBus;
 

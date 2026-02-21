@@ -1,7 +1,7 @@
 #pragma once
 
 #include <yak/queue.h>
-#include <yio/Device.hh>
+#include <yio/Service.hh>
 #include <yio/TreeNode.hh>
 #include <yakpp/Object.hh>
 #include <yakpp/Mutex.hh>
@@ -18,10 +18,10 @@ class IoRegistry : public Object {
     public:
 	static IoRegistry &getRegistry();
 
-	Device &getExpert();
+	Service &getExpert();
 
 	// match with registered personalities
-	const ClassInfo *match(Device *provider, Personality &personality);
+	const ClassInfo *match(Service *provider, Personality &personality);
 
 	void matchAll(TreeNode *node = nullptr);
 

@@ -1,16 +1,17 @@
 #pragma once
 
 #include <yak/queue.h>
-#include <yio/TreeNode.hh>
 #include <yakpp/Array.hh>
+#include <yio/TreeNode.hh>
+#include <yio/WorkLoop.hh>
 
 namespace yak::io
 {
 
 struct Personality;
 
-class Device : public TreeNode {
-	IO_OBJ_DECLARE(Device);
+class Service : public TreeNode {
+	IO_OBJ_DECLARE(Service);
 
     public:
 	virtual void init() override;
@@ -25,19 +26,23 @@ class Device : public TreeNode {
 		return nullptr;
 	}
 
-	virtual int probe(Device *provider);
-	virtual bool start(Device *provider);
-	virtual void stop(Device *provider);
+	virtual int probe(Service *provider);
+	virtual bool start(Service *provider);
+	virtual void stop(Service *provider);
+
+	virtual WorkLoop *getWorkLoop();
+
+	Service *getProvider();
 
 	bool hasDriver = false;
 };
 
-class PlatformExpert : public Device {
+class PlatformExpert : public Service {
 	IO_OBJ_DECLARE(PlatformExpert);
 
     public:
 	void early_start();
-	bool start(Device *provider) override;
+	bool start(Service *provider) override;
 };
 
 }

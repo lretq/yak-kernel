@@ -8,7 +8,7 @@
 extern size_t n_pagefaults;
 extern size_t n_shootdowns;
 
-static void kinfo_update_thread()
+static void kinfo_update_thread(void *)
 {
 	extern struct flanterm_context *kinfo_flanterm_context;
 	if (kinfo_flanterm_context == NULL)

@@ -11,8 +11,8 @@
 namespace yak::io
 {
 
-IO_OBJ_DEFINE(PciBus, Device);
-#define super Device
+IO_OBJ_DEFINE(PciBus, Service);
+#define super Service
 
 void PciBus::init()
 {
@@ -95,9 +95,9 @@ void dev_enum(PciBus *provider, uint32_t segment, uint32_t bus, uint32_t slot)
 
 }
 
-bool PciBus::start(Device *provider)
+bool PciBus::start(Service *provider)
 {
-	if (!Device::start(provider))
+	if (!Service::start(provider))
 		return false;
 
 #if 0
@@ -111,7 +111,7 @@ bool PciBus::start(Device *provider)
 	return true;
 }
 
-void pci_enumerate(Device *provider)
+void pci_enumerate(Service *provider)
 {
 	auto header = headerType(0, 0, 0, 0);
 	if ((header & 0x80) == 0) {

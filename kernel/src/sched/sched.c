@@ -404,7 +404,7 @@ void sched_resume(struct kthread *thread)
 // This is the thread reaper
 // Once a process calls sched_destroy_self it frees all it's ressources
 // and wakes the reaper
-void thread_reaper_fn()
+void thread_reaper_fn(void*)
 {
 	for (;;) {
 		sched_wait(&reaper_ev, WAIT_MODE_BLOCK, TIMEOUT_INFINITE);

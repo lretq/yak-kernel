@@ -1,6 +1,6 @@
 #include <yak/log.h>
 #include <yak/queue.h>
-#include <yio/Device.hh>
+#include <yio/Service.hh>
 #include <yakpp/LockGuard.hh>
 #include <yio/Personality.hh>
 #include <yio/IoRegistry.hh>
@@ -31,12 +31,12 @@ IoRegistry &IoRegistry::getRegistry()
 	return singleton;
 }
 
-Device &IoRegistry::getExpert()
+Service &IoRegistry::getExpert()
 {
 	return platform_expert;
 }
 
-const ClassInfo *IoRegistry::match(Device *provider, Personality &personality)
+const ClassInfo *IoRegistry::match(Service *provider, Personality &personality)
 {
 	LockGuard lock(mutex_);
 	Personality *elm;
@@ -48,10 +48,10 @@ const ClassInfo *IoRegistry::match(Device *provider, Personality &personality)
 		if (!elm->isEqual(&personality))
 			continue;
 
-		auto drv = elm->getDeviceClass();
+		auto drv = elm->getDriverClass();
 		assert(drv);
 
-		auto dev = drv->createInstance()->safe_cast<Device>();
+		auto dev = drv->createInstance()->safe_cast<Service>();
 		assert(dev);
 
 		auto score = dev->probe(provider);
@@ -69,11 +69,11 @@ const ClassInfo *IoRegistry::match(Device *provider, Personality &personality)
 void IoRegistry::matchAll(TreeNode *node)
 {
 	// TODO: what if we want to match a bus?
-	if (node && node->safe_cast<Device>()->hasDriver)
+	if (node && node->safe_cast<Service>()->hasDriver)
 		return;
 
 	if (node) {
-		auto dev = node->safe_cast<Device>();
+		auto dev = node->safe_cast<Service>();
 		assert(dev);
 		auto pers = dev->getPersonality();
 		const ClassInfo *driverClass = nullptr;
@@ -100,7 +100,7 @@ void IoRegistry::matchAll(TreeNode *node)
 			pr_debug("found driver %s for device %s\n",
 				 driverClass->className, dev->name->getCStr());
 			auto driver = driverClass->createInstance()
-					      ->safe_cast<Device>();
+					      ->safe_cast<Service>();
 			driver->init();
 			driver->start(dev);
 			dev->hasDriver = true;
@@ -121,7 +121,7 @@ next:
 void IoRegistry::registerPersonality(Personality *personality)
 {
 	assert(personality);
-	assert(personality->getDeviceClass());
+	assert(personality->getDriverClass());
 
 	{
 		LockGuard lock(mutex_);

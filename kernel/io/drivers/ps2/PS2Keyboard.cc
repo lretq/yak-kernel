@@ -11,7 +11,7 @@
 #include <yio/acpi/AcpiDevice.hh>
 #include <yio/acpi/AcpiPersonality.hh>
 #include <yio/pci/Pci.hh>
-#include <yio/Device.hh>
+#include <yio/Service.hh>
 #include <yio/pci/PciPersonality.hh>
 
 #include "../arch/x86_64/src/asm.h"
@@ -50,11 +50,11 @@ static const char codes_shifted[128] = {
 	'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'
 };
 
-class Ps2Keyboard final : public Device {
+class Ps2Keyboard final : public Service {
 	IO_OBJ_DECLARE(Ps2Keyboard);
 
     public:
-	int probe([[maybe_unused]] Device *provider) override
+	int probe([[maybe_unused]] Service *provider) override
 	{
 		return 100;
 	}
@@ -235,10 +235,12 @@ class Ps2Keyboard final : public Device {
 		return IRQ_ACK;
 	}
 
-	bool start(Device *provider) override
+	bool start(Service *provider) override
 	{
-		if (!Device::start(provider))
+		if (!Service::start(provider))
 			return false;
+
+		auto workLoop = WorkLoop::workLoop();
 
 		pr_info("start ps2 keyboard driver\n");
 		auto acpidev = provider->safe_cast<AcpiDevice>();
@@ -275,7 +277,7 @@ class Ps2Keyboard final : public Device {
 		return true;
 	}
 
-	void stop(Device *provider) override
+	void stop(Service *provider) override
 	{
 		(void)provider;
 	};
@@ -295,7 +297,7 @@ class Ps2Keyboard final : public Device {
 	bool shifted = false;
 };
 
-IO_OBJ_DEFINE(Ps2Keyboard, Device);
+IO_OBJ_DEFINE(Ps2Keyboard, Service);
 
 AcpiPersonality ps2kbdPers =
 	AcpiPersonality(&Ps2Keyboard::classInfo, "PNP0303");

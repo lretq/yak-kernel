@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 #include <yak/semaphore.h>
 #include <yak/queue.h>
@@ -128,3 +132,7 @@ struct vnode *process_getcwd(struct kprocess *process);
 void process_setcwd(struct kprocess *process, struct vnode *vn);
 
 void process_set_exit_status(struct kprocess *proc, int status);
+
+#ifdef __cplusplus
+}
+#endif
