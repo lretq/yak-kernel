@@ -32,7 +32,7 @@ typedef struct kmem_hashtable {
 
 typedef struct kmem_magazine {
 	SLIST_ENTRY(kmem_magazine) entry;
-	void *mag_round[];
+	void *mag_round[1];
 } kmem_magazine_t;
 
 typedef SLIST_HEAD(kmem_mag_list, kmem_magazine) kmem_maglist_t;
@@ -126,7 +126,7 @@ vmem_t *kmem_hash_arena;
 kmem_cache_t *kmem_slab_cache;
 kmem_cache_t *kmem_bufctl_cache;
 
-#define TMP_MAGSIZE 17
+#define TMP_MAGSIZE 63
 kmem_cache_t *tmp_singular_magazine_cache;
 
 #define KM_MAX_LOAD 80

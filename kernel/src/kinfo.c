@@ -47,7 +47,7 @@ static void kinfo_update_thread(void *)
 		bufwrite("%ld active threads, %ld online CPUs", -1UL,
 			 cpus_online());
 
-		flanterm_write(kinfo_flanterm_context, buf, len);
+		flanterm_write_crnl(kinfo_flanterm_context, buf, len);
 
 		ksleep(STIME(1));
 
@@ -63,7 +63,7 @@ void kinfo_launch()
 			     NULL, 1, NULL);
 }
 
-#if ENABLE_KINFO
+#if CONFIG_KINFO
 INIT_ENTAILS(kinfo);
 INIT_DEPS(kinfo);
 INIT_NODE(kinfo, kinfo_launch);

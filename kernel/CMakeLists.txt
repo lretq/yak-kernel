@@ -66,6 +66,7 @@ target_compile_definitions(kernel
 	${YAK_ARCH}
 	ARCH_STR="${YAK_ARCH}"
 
+	CONFIG_KINFO=1
 	CONFIG_PROFILER=0
 	CONFIG_LAZY_IPL=1
 	CONFIG_SERIAL=1

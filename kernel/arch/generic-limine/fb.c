@@ -99,7 +99,7 @@ void limine_fb_setup()
 
 		size_t console_height = fb->height;
 
-#if ENABLE_KINFO
+#if CONFIG_KINFO
 		if (!kinfo_flanterm_context) {
 			size_t kinfo_height = KINFO_HEIGHT(font_scale_y);
 
@@ -143,7 +143,7 @@ void limine_fb_setup()
 				fb->blue_mask_shift, NULL, NULL, NULL, NULL,
 				NULL, NULL, NULL, NULL, 0, 0, 1, 0, 0, 0,
 				FLANTERM_FB_ROTATE_0);
-#if ENABLE_KINFO
+#if CONFIG_KINFO
 		}
 #endif
 
