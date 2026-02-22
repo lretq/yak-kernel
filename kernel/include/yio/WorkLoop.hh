@@ -21,11 +21,13 @@ class WorkLoop : Object {
 
 	void threadMain();
 
+	bool onThread();
+
     private:
 	SpinLock queueLock_;
 
 	Event wakeEvent_;
-	Thread *wlThread_;
+	Thread *workThread_;
 };
 
 }

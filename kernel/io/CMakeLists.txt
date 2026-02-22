@@ -5,6 +5,7 @@ yak_add_sources(
     WorkLoop.cc
     TreeNode.cc
     Personality.cc
+    EventSource.cc
 
     tty/tty.c
     tty/n_tty.c

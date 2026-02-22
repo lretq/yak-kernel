@@ -4,6 +4,7 @@
 #include <yakpp/Event.hh>
 #include <yio/WorkLoop.hh>
 #include <yak/log.h>
+#include <yak/cpudata.h>
 
 namespace yak::io
 {
@@ -30,7 +31,7 @@ void WorkLoop::init()
 	wakeEvent_.init(false, Event::kEventSync);
 
 	kernel_thread_create("workloop", SCHED_PRIO_TIME_SHARE_END,
-			     enterWorkLoopMain, this, true, &wlThread_);
+			     enterWorkLoopMain, this, true, &workThread_);
 }
 
 WorkLoop *WorkLoop::workLoop()
@@ -38,6 +39,11 @@ WorkLoop *WorkLoop::workLoop()
 	WorkLoop *wl;
 	ALLOC_INIT(wl, WorkLoop);
 	return wl;
+}
+
+bool WorkLoop::onThread()
+{
+	return curthread() == workThread_;
 }
 
 }
