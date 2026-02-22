@@ -215,22 +215,6 @@ void init_early_output()
 #endif
 }
 
-void init_bsp_cpudata()
-{
-	// we can just use the "normal" variables on the BSP for percpu access
-	wrmsr(MSR_GSBASE, 0);
-
-	// can pass the start of the .percpu.cpudata offset for the later inits
-	cpudata_init(&percpu_cpudata, (void *)__init_stack_top);
-
-	// initialize the global idt instance
-	idt_init();
-
-	setup_cpu();
-
-	init_early_output();
-}
-
 void apic_global_init();
 void lapic_enable();
 
@@ -273,6 +257,26 @@ INIT_NODE(x86_ipi_setup, ipi_setup);
 LIMINE_REQ struct limine_mp_request mp_request = {
 	.id = LIMINE_MP_REQUEST_ID,
 };
+
+size_t num_cpus_total;
+
+void init_bsp_cpudata()
+{
+	// we can just use the "normal" variables on the BSP for percpu access
+	wrmsr(MSR_GSBASE, 0);
+
+	// can pass the start of the .percpu.cpudata offset for the later inits
+	cpudata_init(&percpu_cpudata, (void *)__init_stack_top);
+
+	// initialize the global idt instance
+	idt_init();
+
+	setup_cpu();
+
+	init_early_output();
+
+	num_cpus_total = mp_request.response->cpu_count;
+}
 
 // TODO: Do the SMP startup ourselves
 

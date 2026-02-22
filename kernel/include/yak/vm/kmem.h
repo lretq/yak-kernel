@@ -6,6 +6,7 @@
 #define KM_SLEEP 0x1
 #define KM_NOSLEEP 0x2
 #define KMC_QCACHE 0x4
+#define KMC_NOMAGAZINE 0x8
 
 typedef struct kmem_cache kmem_cache_t;
 

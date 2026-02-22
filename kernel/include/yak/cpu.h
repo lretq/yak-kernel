@@ -14,4 +14,7 @@ extern struct cpumask cpumask_active;
 void cpu_init();
 void cpu_up(size_t id);
 
+// get total cores (regardless of state)
+size_t cpus_total();
+// get online cores
 size_t cpus_online();

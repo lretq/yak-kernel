@@ -7,6 +7,7 @@
 
 struct cpumask cpumask_active;
 size_t num_cpus_active = 0;
+extern size_t num_cpus_total;
 
 void cpu_init()
 {
@@ -17,6 +18,11 @@ void cpu_up(size_t id)
 {
 	bitset_atomic_set(&cpumask_active, id);
 	__atomic_fetch_add(&num_cpus_active, 1, __ATOMIC_RELAXED);
+}
+
+size_t cpus_total()
+{
+	return num_cpus_total;
 }
 
 size_t cpus_online()

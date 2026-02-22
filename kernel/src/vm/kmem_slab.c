@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <yak/log.h>
+#include <yak/cpudata.h>
+#include <yak/cpu.h>
 #include <yak/queue.h>
 #include <yak/macro.h>
 #include <yak/mutex.h>
@@ -28,8 +30,31 @@ typedef struct kmem_hashtable {
 	buflist_t *buckets;
 } kmem_hashtable_t;
 
+typedef struct kmem_magazine {
+	SLIST_ENTRY(kmem_magazine) entry;
+	void *mag_round[];
+} kmem_magazine_t;
+
+typedef SLIST_HEAD(kmem_mag_list, kmem_magazine) kmem_maglist_t;
+
+typedef struct kmem_cpu_cache {
+	struct kmutex lock;
+
+	int magsize;
+
+	kmem_magazine_t *loaded;
+	int rounds;
+
+	kmem_magazine_t *prev_loaded;
+	int prev_rounds;
+} kmem_cpu_cache_t;
+
+#define KMF_NOMAGAZINE 0x1
+
 typedef struct kmem_cache {
 	struct kmutex mutex;
+
+	unsigned int cache_flags;
 
 	char name[INTERNAL_NAME_MAX];
 
@@ -55,6 +80,12 @@ typedef struct kmem_cache {
 	void (*destructor)(void *obj, void *private);
 	void (*reclaim)(void *private);
 	void *private;
+
+	struct kmutex ml_lock;
+	kmem_maglist_t ml_full;
+	kmem_maglist_t ml_free;
+
+	kmem_cpu_cache_t cpus[];
 } kmem_cache_t;
 
 typedef struct kmem_bufctl {
@@ -94,6 +125,9 @@ vmem_t *kmem_hash_arena;
 
 kmem_cache_t *kmem_slab_cache;
 kmem_cache_t *kmem_bufctl_cache;
+
+#define TMP_MAGSIZE 17
+kmem_cache_t *tmp_singular_magazine_cache;
 
 #define KM_MAX_LOAD 80
 
@@ -212,6 +246,18 @@ static void hashtable_remove(kmem_cache_t *cp, kmem_large_bufctl_t *bp)
 	}
 }
 
+static void cache_enable_magazine(kmem_cache_t *cp)
+{
+	if (cp->cache_flags & KMF_NOMAGAZINE)
+		return;
+
+	for (size_t i = 0; i < cpus_total(); i++) {
+		kmem_cpu_cache_t *ccp = &cp->cpus[i];
+		guard(mutex)(&ccp->lock);
+		ccp->magsize = TMP_MAGSIZE;
+	}
+}
+
 kmem_cache_t *kmem_cache_create(char *name, size_t size, size_t align,
 				int (*constructor)(void *obj, void *private,
 						   int kmflag),
@@ -221,12 +267,16 @@ kmem_cache_t *kmem_cache_create(char *name, size_t size, size_t align,
 {
 	assert(size > 0);
 
-	kmem_cache_t *cp =
-		vmem_alloc(kmem_cache_arena, sizeof(kmem_cache_t), VM_SLEEP);
+	size_t cache_size =
+		sizeof(kmem_cache_t) + sizeof(kmem_cpu_cache_t) * cpus_total();
+
+	kmem_cache_t *cp = vmem_alloc(kmem_cache_arena, cache_size, VM_SLEEP);
 
 	if (cp == NULL) {
 		return NULL;
 	}
+
+	memset(cp, 0, cache_size);
 
 	if (vmp == NULL) {
 		vmp = kmem_default_arena;
@@ -237,6 +287,9 @@ kmem_cache_t *kmem_cache_create(char *name, size_t size, size_t align,
 	} else {
 		align = MAX(align, (size_t)KM_ALIGN);
 	}
+
+	if (cflags & KMC_NOMAGAZINE)
+		cp->cache_flags |= KMF_NOMAGAZINE;
 
 	kmutex_init(&cp->mutex, "kmem_cache");
 
@@ -269,6 +322,18 @@ kmem_cache_t *kmem_cache_create(char *name, size_t size, size_t align,
 	cp->destructor = destructor;
 	cp->reclaim = reclaim;
 	cp->private = private;
+
+	kmutex_init(&cp->ml_lock, "ml_lock");
+	SLIST_INIT(&cp->ml_free);
+	SLIST_INIT(&cp->ml_full);
+
+	for (size_t i = 0; i < cpus_total(); i++) {
+		kmem_cpu_cache_t *ccp = &cp->cpus[i];
+		kmutex_init(&ccp->lock, "ccp_lock");
+		ccp->rounds = -1;
+		ccp->prev_rounds = -1;
+		ccp->magsize = 0;
+	}
 
 	size_t chunksize = ALIGN_UP(size, align);
 
@@ -322,6 +387,8 @@ kmem_cache_t *kmem_cache_create(char *name, size_t size, size_t align,
 
 		//printf("chunksize: %lx\n", chunksize);
 	}
+
+	cache_enable_magazine(cp);
 
 #if 0
 	printf("max color: %d, chunksize: 0x%lx, max chunks: %ld, slabsize: 0x%lx, small: %d, align: %ld\n",
@@ -479,9 +546,82 @@ static void slab_free(kmem_cache_t *cp, kmem_slab_t *sp, kmem_bufctl_t *bp)
 	}
 }
 
+static kmem_magazine_t *magazine_alloc(kmem_cache_t *cp, kmem_maglist_t *list)
+{
+	guard(mutex)(&cp->ml_lock);
+	kmem_magazine_t *mag = SLIST_FIRST(list);
+	if (mag) {
+		SLIST_REMOVE_HEAD(list, entry);
+	}
+	return mag;
+}
+
+static void magazine_free(kmem_cache_t *cp, kmem_maglist_t *list,
+			  kmem_magazine_t *mag)
+{
+	guard(mutex)(&cp->ml_lock);
+	SLIST_INSERT_HEAD(list, mag, entry);
+}
+
+static void magazine_reload(kmem_cpu_cache_t *ccp, kmem_magazine_t *mag,
+			    size_t rounds)
+{
+	ccp->prev_loaded = ccp->loaded;
+	ccp->prev_rounds = ccp->rounds;
+
+	ccp->loaded = mag;
+	ccp->rounds = rounds;
+}
+
 void kmem_cache_free(kmem_cache_t *cp, void *obj)
 {
-	// TODO: magazines
+	kmem_cpu_cache_t *ccp = &cp->cpus[curcpu().cpu_id];
+
+	kmutex_acquire(&ccp->lock, TIMEOUT_INFINITE);
+
+	for (;;) {
+		if ((unsigned int)ccp->rounds < ccp->magsize) {
+			kmem_magazine_t *mp = ccp->loaded;
+			mp->mag_round[ccp->rounds++] = obj;
+			kmutex_release(&ccp->lock);
+			return;
+		}
+
+		if ((unsigned int)ccp->prev_rounds < ccp->magsize) {
+			magazine_reload(ccp, ccp->prev_loaded,
+					ccp->prev_rounds);
+			continue;
+		}
+
+		if (ccp->magsize == 0)
+			break;
+
+		kmem_magazine_t *mag;
+
+		mag = magazine_alloc(cp, &cp->ml_free);
+		if (mag) {
+			if (ccp->prev_loaded) {
+				magazine_free(cp, &cp->ml_full,
+					      ccp->prev_loaded);
+			}
+			magazine_reload(ccp, mag, 0);
+			continue;
+		}
+
+		kmutex_release(&ccp->lock);
+		mag = kmem_cache_alloc(tmp_singular_magazine_cache, 0);
+		kmutex_acquire(&ccp->lock, TIMEOUT_INFINITE);
+
+		if (mag) {
+			// later: check if still the same magzine
+			magazine_free(cp, &cp->ml_free, mag);
+			continue;
+		}
+
+		break;
+	}
+
+	kmutex_release(&ccp->lock);
 
 	kmutex_acquire(&cp->mutex, TIMEOUT_INFINITE);
 
@@ -517,7 +657,42 @@ void kmem_cache_free(kmem_cache_t *cp, void *obj)
 
 void *kmem_cache_alloc(kmem_cache_t *cp, int kmflag)
 {
-	// TODO: magazines
+	kmem_cpu_cache_t *ccp = &cp->cpus[curcpu().cpu_id];
+	kmutex_acquire(&ccp->lock, TIMEOUT_INFINITE);
+
+	for (;;) {
+		if (ccp->rounds > 0) {
+			kmem_magazine_t *mp = ccp->loaded;
+			void *obj = mp->mag_round[--ccp->rounds];
+			kmutex_release(&ccp->lock);
+			return obj;
+		}
+
+		if (ccp->prev_rounds > 0) {
+			magazine_reload(ccp, ccp->prev_loaded,
+					ccp->prev_rounds);
+			continue;
+		}
+
+		if (ccp->magsize == 0)
+			break;
+
+		kmem_magazine_t *mag = magazine_alloc(cp, &cp->ml_full);
+		if (mag) {
+			if (ccp->prev_loaded) {
+				magazine_free(cp, &cp->ml_free,
+					      ccp->prev_loaded);
+			}
+			magazine_reload(ccp, mag, ccp->magsize);
+			continue;
+		}
+
+		break;
+	}
+
+	kmutex_release(&ccp->lock);
+
+	// fall through to the slab layer
 
 	kmutex_acquire(&cp->mutex, TIMEOUT_INFINITE);
 
@@ -555,6 +730,12 @@ void kmem_init()
 	kmem_hash_arena = vmem_init(NULL, "kmem_hash", NULL, 0, KM_ALIGN,
 				    vmem_alloc, vmem_free, &vmem_internal_arena,
 				    0, VM_SLEEP);
+
+	tmp_singular_magazine_cache = kmem_cache_create(
+		"kmem_magazine",
+		sizeof(kmem_magazine_t) + sizeof(void *) * TMP_MAGSIZE, 64,
+		NULL, NULL, NULL, NULL, &vmem_internal_arena,
+		KMC_NOMAGAZINE | VM_SLEEP);
 
 	kmem_slab_cache = kmem_cache_create("kmem_slab", sizeof(kmem_slab_t), 0,
 					    NULL, NULL, NULL, NULL,
