@@ -21,22 +21,10 @@ extern char __kernel_percpu_start[];
 		PERCPU_FIELD_TYPE(field) __value;                        \
 		switch (sizeof(PERCPU_FIELD_TYPE(field))) {              \
 		case 1:                                                  \
-			asm volatile("movb %%gs:%c1, %0"                 \
-				     : "=r"(__value)                     \
-				     : "i"(PERCPU_FIELD_OFFSET(field))); \
-			break;                                           \
 		case 2:                                                  \
-			asm volatile("movw %%gs:%c1, %0"                 \
-				     : "=r"(__value)                     \
-				     : "i"(PERCPU_FIELD_OFFSET(field))); \
-			break;                                           \
 		case 4:                                                  \
-			asm volatile("movl %%gs:%c1, %0"                 \
-				     : "=r"(__value)                     \
-				     : "i"(PERCPU_FIELD_OFFSET(field))); \
-			break;                                           \
 		case 8:                                                  \
-			asm volatile("movq %%gs:%c1, %0"                 \
+			asm volatile("mov %%gs:%c1, %0"                  \
 				     : "=r"(__value)                     \
 				     : "i"(PERCPU_FIELD_OFFSET(field))); \
 			break;                                           \
@@ -51,28 +39,10 @@ extern char __kernel_percpu_start[];
 		PERCPU_FIELD_TYPE(field) __v = (val);                  \
 		switch (sizeof(PERCPU_FIELD_TYPE(field))) {            \
 		case 1:                                                \
-			asm volatile("movb %0, %%gs:%c1"               \
-				     :                                 \
-				     : "r"(__v),                       \
-				       "i"(PERCPU_FIELD_OFFSET(field)) \
-				     : "memory");                      \
-			break;                                         \
 		case 2:                                                \
-			asm volatile("movw %0, %%gs:%c1"               \
-				     :                                 \
-				     : "r"(__v),                       \
-				       "i"(PERCPU_FIELD_OFFSET(field)) \
-				     : "memory");                      \
-			break;                                         \
 		case 4:                                                \
-			asm volatile("movl %0, %%gs:%c1"               \
-				     :                                 \
-				     : "r"(__v),                       \
-				       "i"(PERCPU_FIELD_OFFSET(field)) \
-				     : "memory");                      \
-			break;                                         \
 		case 8:                                                \
-			asm volatile("movq %0, %%gs:%c1"               \
+			asm volatile("mov %0, %%gs:%c1"                \
 				     :                                 \
 				     : "r"(__v),                       \
 				       "i"(PERCPU_FIELD_OFFSET(field)) \
@@ -88,25 +58,10 @@ extern char __kernel_percpu_start[];
 		PERCPU_FIELD_TYPE(field) __old = (val);                \
 		switch (sizeof(PERCPU_FIELD_TYPE(field))) {            \
 		case 1:                                                \
-			asm volatile("xchgb %0, %%gs:%c1"              \
-				     : "+r"(__old)                     \
-				     : "i"(PERCPU_FIELD_OFFSET(field)) \
-				     : "memory");                      \
-			break;                                         \
 		case 2:                                                \
-			asm volatile("xchgw %0, %%gs:%c1"              \
-				     : "+r"(__old)                     \
-				     : "i"(PERCPU_FIELD_OFFSET(field)) \
-				     : "memory");                      \
-			break;                                         \
 		case 4:                                                \
-			asm volatile("xchgl %0, %%gs:%c1"              \
-				     : "+r"(__old)                     \
-				     : "i"(PERCPU_FIELD_OFFSET(field)) \
-				     : "memory");                      \
-			break;                                         \
 		case 8:                                                \
-			asm volatile("xchgq %0, %%gs:%c1"              \
+			asm volatile("xchg %0, %%gs:%c1"               \
 				     : "+r"(__old)                     \
 				     : "i"(PERCPU_FIELD_OFFSET(field)) \
 				     : "memory");                      \
@@ -131,22 +86,10 @@ extern char __kernel_percpu_start[];
 		__typeof__(sym) __value;                         \
 		switch (sizeof(__value)) {                       \
 		case 1:                                          \
-			asm volatile("movb %%gs:(%1), %0"        \
-				     : "=r"(__value)             \
-				     : "r"(PERCPU_OFFSET(sym))); \
-			break;                                   \
 		case 2:                                          \
-			asm volatile("movw %%gs:(%1), %0"        \
-				     : "=r"(__value)             \
-				     : "r"(PERCPU_OFFSET(sym))); \
-			break;                                   \
 		case 4:                                          \
-			asm volatile("movl %%gs:(%1), %0"        \
-				     : "=r"(__value)             \
-				     : "r"(PERCPU_OFFSET(sym))); \
-			break;                                   \
 		case 8:                                          \
-			asm volatile("movq %%gs:(%1), %0"        \
+			asm volatile("mov %%gs:(%1), %0"         \
 				     : "=r"(__value)             \
 				     : "r"(PERCPU_OFFSET(sym))); \
 			break;                                   \
@@ -161,25 +104,10 @@ extern char __kernel_percpu_start[];
 		__typeof__(sym) __v = (val);                             \
 		switch (sizeof(__v)) {                                   \
 		case 1:                                                  \
-			asm volatile("movb %0, %%gs:(%1)"                \
-				     :                                   \
-				     : "r"(__v), "r"(PERCPU_OFFSET(sym)) \
-				     : "memory");                        \
-			break;                                           \
 		case 2:                                                  \
-			asm volatile("movw %0, %%gs:(%1)"                \
-				     :                                   \
-				     : "r"(__v), "r"(PERCPU_OFFSET(sym)) \
-				     : "memory");                        \
-			break;                                           \
 		case 4:                                                  \
-			asm volatile("movl %0, %%gs:(%1)"                \
-				     :                                   \
-				     : "r"(__v), "r"(PERCPU_OFFSET(sym)) \
-				     : "memory");                        \
-			break;                                           \
 		case 8:                                                  \
-			asm volatile("movq %0, %%gs:(%1)"                \
+			asm volatile("mov %0, %%gs:(%1)"                 \
 				     :                                   \
 				     : "r"(__v), "r"(PERCPU_OFFSET(sym)) \
 				     : "memory");                        \
@@ -193,14 +121,11 @@ extern char __kernel_percpu_start[];
 	do {                                                             \
 		__typeof__(sym) __v = (val);                             \
 		switch (sizeof(__v)) {                                   \
+		case 1:                                                  \
+		case 2:                                                  \
 		case 4:                                                  \
-			asm volatile("addl %0, %%gs:%c1"                 \
-				     :                                   \
-				     : "r"(__v), "i"(PERCPU_OFFSET(sym)) \
-				     : "memory");                        \
-			break;                                           \
 		case 8:                                                  \
-			asm volatile("addq %0, %%gs:%c1"                 \
+			asm volatile("add %0, %%gs:%c1"                  \
 				     :                                   \
 				     : "r"(__v), "i"(PERCPU_OFFSET(sym)) \
 				     : "memory");                        \
