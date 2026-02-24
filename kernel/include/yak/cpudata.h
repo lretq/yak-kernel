@@ -17,8 +17,9 @@ extern "C" {
 #include <yak/ipi.h>
 
 struct cpu {
-	struct cpu_md md;
 	struct cpu *self;
+
+	struct cpu_md md;
 
 	size_t cpu_id;
 
@@ -54,17 +55,15 @@ struct cpu {
 	struct remote_call_queue rc_queue;
 };
 
-#define curthread() curcpu().current_thread
+#define curcpu() PERCPU_FIELD_LOAD(self)
+#define cpuid() PERCPU_FIELD_LOAD(cpu_id)
+#define curthread() PERCPU_FIELD_LOAD(current_thread)
 #define curproc() curthread()->owner_process
 
 extern struct cpu **__all_cpus;
 #define getcpu(i) __all_cpus[i]
 
 void cpudata_init(struct cpu *cpu, void *stack_top);
-
-#define PERCPU_PTR(type, var)                                   \
-	((type *)((uintptr_t)curcpu_ptr() + ((uintptr_t)&var) - \
-		  ((uintptr_t)__kernel_percpu_start)))
 
 #ifdef __cplusplus
 }

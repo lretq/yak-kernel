@@ -61,8 +61,8 @@ void cpudata_init(struct cpu *cpu, void *stack_top)
 
 	cpu->softint_pending = 0;
 
-	spinlock_init(&curcpu_ptr()->sched_lock);
-	struct sched *sched = &curcpu_ptr()->sched;
+	spinlock_init(&cpu->sched_lock);
+	struct sched *sched = &cpu->sched;
 
 	for (size_t rq = 0; rq < 2; rq++) {
 		for (size_t prio = 0; prio < elementsof(sched->rqs[0].queues);

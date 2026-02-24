@@ -640,25 +640,24 @@ void vm_map_activate(struct vm_map *map)
 {
 	assert(map);
 
-	struct cpu *cpu = curcpu_ptr();
-
-	struct vm_map *old = cpu->current_map;
+	struct vm_map *old = PERCPU_FIELD_LOAD(current_map);
 
 	if (old != map) {
 		pmap_activate(&map->pmap);
 	}
 
-	cpu->current_map = map;
+	PERCPU_FIELD_STORE(current_map, map);
 
 	if (old != NULL) {
-		bitset_atomic_clear(&old->pmap.mapped_on, cpu->cpu_id);
+		bitset_atomic_clear(&old->pmap.mapped_on, cpuid());
 	}
-	bitset_atomic_set(&map->pmap.mapped_on, cpu->cpu_id);
+
+	bitset_atomic_set(&map->pmap.mapped_on, cpuid());
 }
 
 struct vm_map *vm_map_tmp_switch(struct vm_map *map)
 {
-	struct vm_map *orig = curcpu().current_map;
+	struct vm_map *orig = PERCPU_FIELD_LOAD(current_map);
 	curthread()->vm_ctx = map;
 	vm_map_activate(map);
 	return orig;

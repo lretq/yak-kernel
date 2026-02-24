@@ -15,7 +15,7 @@ void rcq_init(struct remote_call_queue *rcq)
 
 void ipi_handler()
 {
-	struct cpu *cpu = curcpu_ptr();
+	struct cpu *cpu = curcpu();
 	struct remote_call_queue *rcq = &cpu->rc_queue;
 	spinlock_lock_noipl(&rcq->rcq_lock);
 	while (ringbuffer_available(&rcq->rcq_buffer)) {
@@ -60,7 +60,7 @@ static void do_ipi(size_t cpu, remote_fn_t fn, void *ctx, size_t *done)
 void ipi_send(size_t cpu, remote_fn_t fn, void *ctx)
 {
 	if (cpu == IPI_SEND_OTHERS) {
-		size_t our_id = curcpu().cpu_id;
+		size_t our_id = cpuid();
 		bitset_word_t tmp;
 		for_each_cpu(tmp, &cpumask_active) {
 			if (tmp != our_id)
@@ -77,7 +77,7 @@ void ipi_send_wait(size_t cpu, remote_fn_t fn, void *ctx)
 	size_t target_count = 0;
 
 	if (cpu == IPI_SEND_OTHERS) {
-		size_t our_id = curcpu().cpu_id;
+		size_t our_id = cpuid();
 		bitset_word_t tmp;
 		for_each_cpu(tmp, &cpumask_active) {
 			if (tmp != our_id) {
@@ -102,7 +102,7 @@ void ipi_mask_send(struct cpumask *mask, remote_fn_t fn, void *ctx, bool self,
 	size_t done_count = 0;
 	size_t target_count = 0;
 
-	size_t our_id = curcpu().cpu_id;
+	size_t our_id = cpuid();
 	bitset_word_t tmp;
 	for_each_cpu(tmp, mask) {
 		if (!self && tmp == our_id)

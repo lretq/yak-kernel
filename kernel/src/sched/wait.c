@@ -51,7 +51,7 @@ static void wb_dequeue(struct wait_block *wb)
 static status_t do_wait(struct kthread *thread, bool has_timeout)
 {
 	// the idle thread must not wait!
-	assert(thread != &curcpu_ptr()->idle_thread);
+	assert(thread != &curcpu()->idle_thread);
 
 	thread->wait_phase = WAIT_PHASE_COMITTED;
 

@@ -575,7 +575,7 @@ static void magazine_reload(kmem_cpu_cache_t *ccp, kmem_magazine_t *mag,
 
 void kmem_cache_free(kmem_cache_t *cp, void *obj)
 {
-	kmem_cpu_cache_t *ccp = &cp->cpus[curcpu().cpu_id];
+	kmem_cpu_cache_t *ccp = &cp->cpus[cpuid()];
 
 	kmutex_acquire(&ccp->lock, TIMEOUT_INFINITE);
 
@@ -657,7 +657,7 @@ void kmem_cache_free(kmem_cache_t *cp, void *obj)
 
 void *kmem_cache_alloc(kmem_cache_t *cp, int kmflag)
 {
-	kmem_cpu_cache_t *ccp = &cp->cpus[curcpu().cpu_id];
+	kmem_cpu_cache_t *ccp = &cp->cpus[cpuid()];
 	kmutex_acquire(&ccp->lock, TIMEOUT_INFINITE);
 
 	for (;;) {

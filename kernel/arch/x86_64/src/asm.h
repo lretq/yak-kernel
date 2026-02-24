@@ -82,7 +82,7 @@ static inline uint32_t inl(uint32_t port)
 		asm volatile("mov %%cr" #REG ", %0" : "=r"(data)); \
 		return data;                                       \
 	}                                                          \
-	static inline __no_prof void write_cr##REG(uint64_t val)             \
+	static inline __no_prof void write_cr##REG(uint64_t val)   \
 	{                                                          \
 		asm volatile("mov %0, %%cr" #REG ::"a"(val));      \
 	}
@@ -94,8 +94,8 @@ FN_CR(3);
 FN_CR(4);
 FN_CR(8);
 
-static inline void cpuid(int leaf, int subleaf, uint32_t *eax, uint32_t *ebx,
-			 uint32_t *ecx, uint32_t *edx)
+static inline void asm_cpuid(int leaf, int subleaf, uint32_t *eax,
+			     uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
 	asm volatile("cpuid"
 		     : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)

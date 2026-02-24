@@ -123,12 +123,12 @@ void _syscall_entry()
 		"swapgs\n\t"
 
 		// store user rsp in cpu->syscall_temp
-		"movq %%rsp, %%gs:__kernel_percpu_start+%c0(%%rip)\n\t"
+		"movq %%rsp, %%gs:%c0\n\t"
 		// load kernel rsp from cpu->kstack_top
-		"movq %%gs:__kernel_percpu_start+%c1(%%rip), %%rsp\n\t"
+		"movq %%gs:%c1, %%rsp\n\t"
 
 		// push syscall_temp to stack
-		"pushq %%gs:__kernel_percpu_start+%c0(%%rip)\n\t"
+		"pushq %%gs:%c0\n\t"
 		"push %%rbp\n\t"
 		"push %%r15\n\t"
 		"push %%r14\n\t"
@@ -263,7 +263,7 @@ size_t num_cpus_total;
 void init_bsp_cpudata()
 {
 	// we can just use the "normal" variables on the BSP for percpu access
-	wrmsr(MSR_GSBASE, 0);
+	wrmsr(MSR_GSBASE, (uintptr_t)__kernel_percpu_start);
 
 	// can pass the start of the .percpu.cpudata offset for the later inits
 	cpudata_init(&percpu_cpudata, (void *)__init_stack_top);
@@ -284,7 +284,7 @@ struct [[gnu::aligned(64)]] extra_info {
 	uintptr_t cr3;
 	void *stack_top;
 	int done;
-	uintptr_t percpu_offset;
+	uintptr_t percpu_base;
 };
 
 // called from naked function after switching off of the limine stack
@@ -295,12 +295,11 @@ static void c_ap_entry(struct limine_mp_info *info)
 
 	struct extra_info *extra = (struct extra_info *)info->extra_argument;
 
-	wrmsr(MSR_GSBASE, extra->percpu_offset);
+	wrmsr(MSR_GSBASE, extra->percpu_base);
 
 	pmap_activate(&kmap()->pmap);
 
-	struct cpu *cpudata = (struct cpu *)((uintptr_t)&percpu_cpudata +
-					     extra->percpu_offset);
+	struct cpu *cpudata = (struct cpu *)(extra->percpu_base);
 
 	cpudata_init(cpudata, (void *)extra->stack_top);
 
@@ -312,11 +311,11 @@ static void c_ap_entry(struct limine_mp_info *info)
 
 	lapic_enable();
 
-	__all_cpus[curcpu().cpu_id] = curcpu_ptr();
+	__all_cpus[cpuid()] = curcpu();
 
 	__atomic_store_n(&extra->done, 1, __ATOMIC_RELEASE);
 
-	cpu_up(curcpu().cpu_id);
+	cpu_up(cpuid());
 
 	extern void idle_loop();
 	idle_loop();
@@ -359,7 +358,7 @@ void start_aps()
 	size_t cpu_count = response->cpu_count;
 
 	__all_cpus = kcalloc(cpu_count, sizeof(struct cpu *));
-	__all_cpus[curcpu().cpu_id] = curcpu_ptr();
+	__all_cpus[cpuid()] = curcpu();
 
 	paddr_t kernel_cr3 = read_cr3();
 
@@ -369,7 +368,7 @@ void start_aps()
 	for (size_t cpu = 0; cpu < cpu_count; cpu++) {
 		struct limine_mp_info *info = response->cpus[cpu];
 
-		if (info->lapic_id == curcpu().md.apic_id)
+		if (info->lapic_id == PERCPU_FIELD_LOAD(md.apic_id))
 			continue;
 
 		struct extra_info *extra_arg = &all_ap_info_structs[cpu];
@@ -385,14 +384,13 @@ void start_aps()
 		extra_arg->cr3 = kernel_cr3;
 		extra_arg->done = 0;
 		extra_arg->stack_top = stack_top;
-		extra_arg->percpu_offset =
-			percpu_area - (uintptr_t)__kernel_percpu_start;
+		extra_arg->percpu_base = percpu_area;
 
 		info->extra_argument = (uint64_t)extra_arg;
 		info->goto_address = naked_ap_entry;
 	}
 
-	all_ap_info_structs[curcpu().cpu_id].done = 1;
+	all_ap_info_structs[cpuid()].done = 1;
 	wait_for_all(cpu_count);
 
 	enable_interrupts();

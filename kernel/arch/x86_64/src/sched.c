@@ -91,7 +91,7 @@ void plat_swtch(struct kthread *current, struct kthread *thread)
 	}
 
 	if (thread->user_thread) {
-		t_tss.rsp0 = (uint64_t)thread->kstack_top;
+		PERCPU_STORE(percpu_tss.rsp0, (uint64_t)thread->kstack_top);
 		wrmsr(MSR_FSBASE, thread->pcb.fsbase);
 		wrmsr(MSR_KERNEL_GSBASE, thread->pcb.gsbase);
 

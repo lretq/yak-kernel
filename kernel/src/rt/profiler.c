@@ -154,7 +154,7 @@ __cyg_profile_func_enter(void *fn, void *call_site)
 	if (!__atomic_load_n(&prof_active, __ATOMIC_ACQUIRE))
 		return;
 
-	struct kthread *current_task = curcpu().current_thread;
+	struct kthread *current_task = curthread();
 
 	size_t idx = current_task->cur_frame++;
 	if (idx >= MAX_FRAMES) {
@@ -183,7 +183,7 @@ __cyg_profile_func_exit(void *fn, void *call_site)
 	if (!__atomic_load_n(&prof_active, __ATOMIC_ACQUIRE))
 		return;
 
-	struct kthread *current_task = curcpu().current_thread;
+	struct kthread *current_task = curthread();
 
 	unsigned state = sdi();
 

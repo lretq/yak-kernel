@@ -35,31 +35,35 @@ struct [[gnu::packed]] gdt {
 	struct gdt_tss_entry tss;
 };
 
-__percpu struct gdt t_gdt;
-__percpu struct tss t_tss;
+struct gdt percpu_gdt PERCPU;
+struct tss percpu_tss PERCPU;
+
+#define PERCPU_GDT_ENTRY(index) (PERCPU_PTR(percpu_gdt.entries[index]))
+#define PERCPU_TSS_ENTRY() (PERCPU_PTR(percpu_gdt.tss))
 
 static void gdt_make_entry(int index, uint32_t base, uint16_t limit,
 			   uint8_t access, uint8_t granularity)
 {
-	t_gdt.entries[index].limit = limit;
-	t_gdt.entries[index].access = access;
-	t_gdt.entries[index].granularity = granularity;
-	t_gdt.entries[index].low = (uint16_t)base;
-	t_gdt.entries[index].mid = (uint8_t)(base >> 16);
-	t_gdt.entries[index].high = (uint8_t)(base >> 24);
+	struct gdt_entry entry;
+	entry.limit = limit;
+	entry.access = access;
+	entry.granularity = granularity;
+	entry.low = (uint16_t)base;
+	entry.mid = (uint8_t)(base >> 16);
+	entry.high = (uint8_t)(base >> 24);
+
+	struct gdt_entry *e = PERCPU_GDT_ENTRY(index);
+	*e = entry;
 }
 
 static void gdt_tss_entry()
 {
-	t_gdt.tss.length = 104;
-	t_gdt.tss.access = 0x89;
-	t_gdt.tss.flags = 0;
-	t_gdt.tss.rsv = 0;
+	struct gdt_tss_entry tss_entry = { 0 };
+	tss_entry.length = 104;
+	tss_entry.access = 0x89;
 
-	t_gdt.tss.low = 0;
-	t_gdt.tss.mid = 0;
-	t_gdt.tss.high = 0;
-	t_gdt.tss.upper = 0;
+	struct gdt_tss_entry *e = PERCPU_TSS_ENTRY();
+	*e = tss_entry;
 }
 
 void gdt_init()
@@ -84,15 +88,17 @@ static void tss_reload()
 	// we mustn't access another cpu's tss
 	ipl_t ipl = ripl(IPL_DPC);
 
-	uint64_t tss_addr = (uint64_t)PERCPU_PTR(void, t_tss);
-	t_gdt.tss.low = (uint16_t)tss_addr;
-	t_gdt.tss.mid = (uint8_t)(tss_addr >> 16);
-	t_gdt.tss.high = (uint8_t)(tss_addr >> 24);
-	t_gdt.tss.upper = (uint32_t)(tss_addr >> 32);
+	uint64_t tss_addr = (uint64_t)PERCPU_PTR(percpu_tss);
+	struct gdt_tss_entry *tss_entry = PERCPU_PTR(percpu_gdt.tss);
+	tss_entry->low = (uint16_t)tss_addr;
+	tss_entry->mid = (uint8_t)(tss_addr >> 16);
+	tss_entry->high = (uint8_t)(tss_addr >> 24);
+	tss_entry->upper = (uint32_t)(tss_addr >> 32);
 
-	t_gdt.tss.flags = 0;
-	t_gdt.tss.access = 0b10001001;
-	t_gdt.tss.rsv = 0;
+	tss_entry->flags = 0;
+	tss_entry->access = 0b10001001;
+	tss_entry->rsv = 0;
+
 	asm volatile("ltr %0" ::"rm"(GDT_SEL_TSS) : "memory");
 
 	xipl(ipl);
@@ -100,11 +106,12 @@ static void tss_reload()
 
 void tss_init()
 {
-	memset(PERCPU_PTR(void, t_tss), 0, sizeof(struct tss));
-	t_tss.ist1 = alloc_kstack();
-	t_tss.ist2 = alloc_kstack();
-	t_tss.ist3 = alloc_kstack();
-	t_tss.ist4 = alloc_kstack();
+	struct tss *tss_ptr = PERCPU_PTR(percpu_tss);
+	memset(tss_ptr, 0, sizeof(struct tss));
+	tss_ptr->ist1 = alloc_kstack();
+	tss_ptr->ist2 = alloc_kstack();
+	tss_ptr->ist3 = alloc_kstack();
+	tss_ptr->ist4 = alloc_kstack();
 	tss_reload();
 }
 INIT_ENTAILS(x86_bsp_tss, bsp_ready);
@@ -118,7 +125,7 @@ void gdt_reload()
 		uint64_t base;
 	} gdtr = {
 		.limit = sizeof(struct gdt) - 1,
-		.base = (uint64_t)PERCPU_PTR(struct gdt, t_gdt),
+		.base = (uint64_t)PERCPU_PTR(percpu_gdt),
 	};
 
 	asm volatile( //

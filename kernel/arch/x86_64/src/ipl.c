@@ -1,3 +1,4 @@
+#include <yak/percpu.h>
 #include <yak/softint.h>
 #include <yak/ipl.h>
 #include <yak/cpudata.h>
@@ -7,24 +8,28 @@
 #if CONFIG_LAZY_IPL
 ipl_t curipl()
 {
-	return curcpu().soft_ipl;
+	return PERCPU_FIELD_LOAD(soft_ipl);
 }
 
 ipl_t ripl(ipl_t ipl)
 {
-	ipl_t old = curcpu().soft_ipl;
-	curcpu().soft_ipl = ipl;
+	return PERCPU_FIELD_XCHG(soft_ipl, ipl);
+
+	/*
+	ipl_t old = curcpu()->soft_ipl;
+	curcpu()->soft_ipl = ipl;
 	return old;
+	*/
 }
 
 void xipl(ipl_t ipl)
 {
-	curcpu().soft_ipl = ipl;
-	if (curcpu().hw_ipl > ipl) {
-		curcpu().hw_ipl = ipl;
+	PERCPU_FIELD_STORE(soft_ipl, ipl);
+	if (PERCPU_FIELD_LOAD(hw_ipl) > ipl) {
+		PERCPU_FIELD_STORE(hw_ipl, ipl);
 		write_cr8(ipl);
 	}
-	if (curcpu().softint_pending >> ipl) {
+	if (PERCPU_FIELD_LOAD(softint_pending) >> ipl) {
 		softint_dispatch(ipl);
 	}
 }
@@ -52,7 +57,7 @@ void xipl(ipl_t ipl)
 		return;
 	assert(ipl <= old);
 	write_cr8(ipl);
-	if (curcpu().softint_pending >> ipl) {
+	if (PERCPU_FIELD_LOAD(softint_pending) >> ipl) {
 		softint_dispatch(ipl);
 	}
 }

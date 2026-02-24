@@ -16,7 +16,7 @@ void dpc_init(struct dpc *dpc, void (*func)(struct dpc *, void *))
 
 void dpc_enqueue(struct dpc *dpc, void *context)
 {
-	struct cpu *cpu = curcpu_ptr();
+	struct cpu *cpu = curcpu();
 	int state = spinlock_lock_interrupts(&cpu->dpc_lock);
 
 	if (dpc->enqueued) {
@@ -34,7 +34,7 @@ void dpc_enqueue(struct dpc *dpc, void *context)
 
 void dpc_dequeue(struct dpc *dpc)
 {
-	struct cpu *cpu = curcpu_ptr();
+	struct cpu *cpu = curcpu();
 	int state = spinlock_lock_interrupts(&cpu->dpc_lock);
 
 	if (!dpc->enqueued)

@@ -153,7 +153,7 @@ void __isr_c_entry(struct context *frame)
 				flags |= VM_FAULT_READ;
 			}
 
-			struct vm_map *map = curcpu().current_map;
+			struct vm_map *map = PERCPU_FIELD_LOAD(current_map);
 			assert(map);
 			status_t status = vm_handle_fault(map, address, flags);
 
@@ -179,9 +179,9 @@ void __isr_c_entry(struct context *frame)
 		ipl_t level_ipl = frame->number >> 4;
 
 #if CONFIG_LAZY_IPL
-		if (ipl >= level_ipl && curcpu().hw_ipl < level_ipl) {
+		if (ipl >= level_ipl && PERCPU_FIELD_LOAD(hw_ipl) < level_ipl) {
 			write_cr8(level_ipl);
-			curcpu().hw_ipl = level_ipl;
+			PERCPU_FIELD_STORE(hw_ipl, level_ipl);
 			lapic_eoi();
 			lapic_defer_interrupt(frame->number);
 			return;

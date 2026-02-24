@@ -57,7 +57,7 @@ __no_san void vprintk(unsigned short level, const char *fmt, va_list args)
 	case LEVEL:                                                          \
 		ctx.size = npf_snprintf(ctx.buf, LOG_BUF_SIZE,               \
 					"\x1b[0;37m[#%02zu]\x1b[0m " PREFIX, \
-					curcpu().cpu_id);                    \
+					cpuid());                   \
 		break;
 
 	switch (level) {

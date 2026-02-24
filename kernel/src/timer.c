@@ -67,28 +67,28 @@ exit:
 status_t timer_install(struct timer *timer, nstime_t ns_delta)
 {
 	// lock with interrupts, else what if timer int fires while we're here
-	int state = spinlock_lock_interrupts(&curcpu_ptr()->timer_lock);
+	int state = spinlock_lock_interrupts(&curcpu()->timer_lock);
 	spinlock_lock_noipl(&timer->hdr.obj_lock);
 	// timer is already installed somewhere
 	if (timer->cpu != NULL) {
 		spinlock_unlock_noipl(&timer->hdr.obj_lock);
-		spinlock_unlock_interrupts(&curcpu_ptr()->timer_lock, state);
+		spinlock_unlock_interrupts(&curcpu()->timer_lock, state);
 		return YAK_BUSY;
 	}
 
-	timer->cpu = curcpu_ptr();
+	timer->cpu = curcpu();
 	timer->state = TIMER_STATE_QUEUED;
 	timer->deadline = plat_getnanos() + ns_delta;
 
-	struct timer_heap *heap = &curcpu_ptr()->timer_heap;
+	struct timer_heap *heap = &curcpu()->timer_heap;
 	HEAP_INSERT(timer_heap, heap, timer);
 
 	timer->hdr.obj_signal_count = 0;
 
 	spinlock_unlock_noipl(&timer->hdr.obj_lock);
-	spinlock_unlock_interrupts(&curcpu_ptr()->timer_lock, state);
+	spinlock_unlock_interrupts(&curcpu()->timer_lock, state);
 
-	dpc_enqueue(&curcpu_ptr()->timer_update_dpc, NULL);
+	dpc_enqueue(&curcpu()->timer_update_dpc, NULL);
 
 	return YAK_SUCCESS;
 }
@@ -96,24 +96,24 @@ status_t timer_install(struct timer *timer, nstime_t ns_delta)
 // run from DPC context
 void timer_update([[maybe_unused]] struct dpc *dpc, [[maybe_unused]] void *ctx)
 {
-	struct timer_heap *heap = &curcpu_ptr()->timer_heap;
+	struct timer_heap *heap = &curcpu()->timer_heap;
 
 	nstime_t curr_time;
 
 	do {
 		curr_time = plat_getnanos();
 
-		spinlock_lock_noipl(&curcpu_ptr()->timer_lock);
+		spinlock_lock_noipl(&curcpu()->timer_lock);
 		if (HEAP_EMPTY(heap)) {
 			plat_arm_timer(TIMER_INFINITE);
-			spinlock_unlock_noipl(&curcpu_ptr()->timer_lock);
+			spinlock_unlock_noipl(&curcpu()->timer_lock);
 			return;
 		}
 
 		struct timer *root = HEAP_PEEK(heap);
 		if (root->deadline > curr_time) {
 			plat_arm_timer(root->deadline);
-			spinlock_unlock_noipl(&curcpu_ptr()->timer_lock);
+			spinlock_unlock_noipl(&curcpu()->timer_lock);
 			return;
 		}
 
@@ -132,7 +132,7 @@ void timer_update([[maybe_unused]] struct dpc *dpc, [[maybe_unused]] void *ctx)
 		root->hdr.obj_signal_count = 1;
 
 		spinlock_unlock_noipl(&root->hdr.obj_lock);
-		spinlock_unlock_noipl(&curcpu_ptr()->timer_lock);
+		spinlock_unlock_noipl(&curcpu()->timer_lock);
 	} while (1);
 }
 

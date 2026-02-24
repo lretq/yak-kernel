@@ -37,11 +37,11 @@ void softint_dispatch(ipl_t ipl)
 {
 	int state = disable_interrupts();
 
-	struct cpu *cpu = curcpu_ptr();
+	struct cpu *cpu = curcpu();
 
 	while (cpu->softint_pending & (0xFFFF << ipl)) {
 		softint_handlers[31 - __builtin_clz(cpu->softint_pending)](cpu);
-		cpu = curcpu_ptr();
+		cpu = curcpu();
 	}
 
 	xipl(ipl);
@@ -52,7 +52,7 @@ void softint_dispatch(ipl_t ipl)
 
 void softint_issue(ipl_t ipl)
 {
-	__atomic_or_fetch(&curcpu_ptr()->softint_pending, PENDING(ipl),
+	__atomic_or_fetch(&curcpu()->softint_pending, PENDING(ipl),
 			  __ATOMIC_ACQUIRE);
 }
 

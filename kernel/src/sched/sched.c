@@ -88,7 +88,7 @@ static void swtch(struct kthread *current, struct kthread *thread)
 	assert(current->status != THREAD_TERMINATING ||
 	       current->status != THREAD_WAITING);
 
-	current->affinity_cpu = curcpu_ptr();
+	current->affinity_cpu = curcpu();
 
 	if (thread->vm_ctx != NULL) {
 		// Kernel processes can attach themselves to arbitrary map contexts
@@ -100,8 +100,8 @@ static void swtch(struct kthread *current, struct kthread *thread)
 		}
 	}
 
-	curcpu().current_thread = thread;
-	curcpu().kstack_top = thread->kstack_top;
+	PERCPU_FIELD_STORE(current_thread, thread);
+	PERCPU_FIELD_STORE(kstack_top, thread->kstack_top);
 
 	plat_swtch(current, thread);
 
@@ -203,13 +203,13 @@ static struct kthread *select_next(struct cpu *cpu, unsigned int priority)
 static void do_reschedule()
 {
 	struct kthread *current = curthread(), *next;
-	ipl_t ipl = spinlock_lock(&curcpu_ptr()->sched_lock);
+	ipl_t ipl = spinlock_lock(&curcpu()->sched_lock);
 	// check if there is something ready to preempt us
-	if ((next = select_next(curcpu_ptr(), current->priority)) != NULL) {
-		assert(curcpu_ptr()->next_thread == NULL);
-		curcpu_ptr()->next_thread = next;
+	if ((next = select_next(curcpu(), current->priority)) != NULL) {
+		assert(curcpu()->next_thread == NULL);
+		curcpu()->next_thread = next;
 	}
-	spinlock_unlock(&curcpu_ptr()->sched_lock, ipl);
+	spinlock_unlock(&curcpu()->sched_lock, ipl);
 }
 #endif
 
@@ -381,7 +381,7 @@ static struct cpu *find_cpu()
 
 	pr_warn("find_cpu(): fallback to local core?\n");
 
-	return curcpu_ptr();
+	return curcpu();
 }
 
 void sched_resume_locked(struct kthread *thread)
@@ -394,7 +394,7 @@ void sched_resume_locked(struct kthread *thread)
 	}
 
 	spinlock_lock_noipl(&cpu->sched_lock);
-	sched_insert(cpu, thread, cpu != curcpu_ptr());
+	sched_insert(cpu, thread, cpu != curcpu());
 	spinlock_unlock_noipl(&cpu->sched_lock);
 }
 
@@ -468,7 +468,7 @@ void sched_exit_self()
 
 	//pr_debug("pre-yield: %p\n", thread);
 
-	sched_yield(thread, curcpu_ptr());
+	sched_yield(thread, curcpu());
 	__builtin_unreachable();
 	__builtin_trap();
 }

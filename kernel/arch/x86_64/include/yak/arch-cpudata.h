@@ -11,11 +11,6 @@ struct cpu_md {
 	uint64_t apic_ticks_per_ms;
 };
 
-extern char __kernel_percpu_start[];
-
-#define curcpu() (*(__seg_gs struct cpu *)(uintptr_t)__kernel_percpu_start)
-#define curcpu_ptr() (curcpu().self)
-
 #ifdef __cplusplus
 }
 #endif

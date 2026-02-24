@@ -34,7 +34,7 @@ static void local_fpu_enable(bool xsave)
 		xcr0 |= (1 << 0);
 
 		uint32_t eax, ebx, ecx, edx;
-		cpuid(0xd, 0, &eax, &ebx, &ecx, &edx);
+		asm_cpuid(0xd, 0, &eax, &ebx, &ecx, &edx);
 		// enable everything supported
 		xcr0 |= ((uint64_t)edx << 32) | eax;
 
@@ -51,7 +51,7 @@ void fpu_init()
 {
 	uint32_t eax, ebx, ecx, edx;
 
-	cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+	asm_cpuid(1, 0, &eax, &ebx, &ecx, &edx);
 
 	if ((edx & (1 << 25)) == 0)
 		panic("SSE is unsupported. how did you even boot into long mode?\n");
@@ -60,7 +60,7 @@ void fpu_init()
 	if (ecx & (1 << 26)) {
 		local_fpu_enable(true);
 
-		cpuid(0xd, 0, &eax, &ebx, &ecx, &edx);
+		asm_cpuid(0xd, 0, &eax, &ebx, &ecx, &edx);
 		fpstate_cache = kmem_cache_create("fpu_state", ebx, 64, NULL,
 						  NULL, NULL, NULL, NULL,
 						  KM_SLEEP);

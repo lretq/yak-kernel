@@ -97,7 +97,8 @@ void lapic_send_ipi(uint32_t lapic_id, uint8_t vector)
 
 void lapic_defer_interrupt(uint8_t number)
 {
-	lapic_send_ipi(curcpu().md.apic_id, number);
+	// send self-interrupt
+	lapic_send_ipi(PERCPU_FIELD_LOAD(md.apic_id), number);
 }
 
 extern size_t ipi_vector;
@@ -137,8 +138,8 @@ static void lapic_calibrate()
 	uint64_t avg = sum / (wait_ms * runs);
 	// round up to 100000
 	avg = (avg + 100000) / 100000 * 100000;
-	curcpu().md.apic_ticks_per_ms = avg;
 	pr_debug("%ld timer ticks/ms\n", avg);
+	PERCPU_FIELD_STORE(md.apic_ticks_per_ms, avg);
 }
 
 void lapic_enable()
@@ -160,7 +161,7 @@ void lapic_enable()
 	// set 1 as divider
 	lapic_write(LAPIC_REG_TIMER_DIVIDE, 0b1011);
 
-	curcpu().md.apic_id = lapic_id();
+	PERCPU_FIELD_STORE(md.apic_id, lapic_id());
 
 	lapic_calibrate();
 
@@ -171,7 +172,7 @@ void lapic_enable()
 
 static int apic_handler([[maybe_unused]] void *private)
 {
-	dpc_enqueue(&curcpu_ptr()->timer_update_dpc, NULL);
+	dpc_enqueue(&curcpu()->timer_update_dpc, NULL);
 	return IRQ_ACK;
 }
 
@@ -193,7 +194,8 @@ void plat_arm_timer(nstime_t deadline)
 	nstime_t delta = deadline - plat_getnanos();
 
 	uint64_t ticks;
-	ticks = (DIV_ROUNDUP(delta, 1000000)) * curcpu().md.apic_ticks_per_ms;
+	ticks = (DIV_ROUNDUP(delta, 1000000)) *
+		PERCPU_FIELD_LOAD(md.apic_ticks_per_ms);
 
 	if (ticks <= 0 || delta <= 0) {
 		lapic_write(LAPIC_REG_TIMER_INITIAL, 1);
