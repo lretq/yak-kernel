@@ -27,7 +27,7 @@ static void kinfo_update_thread(void *)
 		bufwrite("\e[H");
 		bufwrite("\e[?25l");
 
-		nstime_t boot_time = plat_getnanos();
+		nstime_t boot_time = uptime();
 		// convert to seconds
 		boot_time /= STIME(1);
 

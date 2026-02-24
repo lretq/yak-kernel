@@ -30,4 +30,5 @@ yak_add_sources(
 	timer.c
 	console.c
 	symbol.c
+	clocksource.c
 )

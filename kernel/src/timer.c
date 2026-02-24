@@ -78,7 +78,7 @@ status_t timer_install(struct timer *timer, nstime_t ns_delta)
 
 	timer->cpu = curcpu();
 	timer->state = TIMER_STATE_QUEUED;
-	timer->deadline = plat_getnanos() + ns_delta;
+	timer->deadline = uptime() + ns_delta;
 
 	struct timer_heap *heap = &curcpu()->timer_heap;
 	HEAP_INSERT(timer_heap, heap, timer);
@@ -101,7 +101,7 @@ void timer_update([[maybe_unused]] struct dpc *dpc, [[maybe_unused]] void *ctx)
 	nstime_t curr_time;
 
 	do {
-		curr_time = plat_getnanos();
+		curr_time = uptime();
 
 		spinlock_lock_noipl(&curcpu()->timer_lock);
 		if (HEAP_EMPTY(heap)) {
@@ -146,8 +146,8 @@ void ksleep(nstime_t ns)
 
 void kstall(nstime_t ns)
 {
-	nstime_t deadline = plat_getnanos() + ns;
-	while (plat_getnanos() < deadline) {
+	nstime_t deadline = uptime() + ns;
+	while (uptime() < deadline) {
 		busyloop_hint();
 	}
 }
@@ -156,7 +156,7 @@ struct timespec time_now()
 {
 	struct timespec ts;
 	// XXX: RTC or something
-	nstime_t now = plat_getnanos();
+	nstime_t now = uptime();
 	ts.tv_sec = now / STIME(1);
 	ts.tv_nsec = now - (ts.tv_sec * STIME(1));
 	return ts;

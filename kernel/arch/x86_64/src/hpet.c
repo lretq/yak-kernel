@@ -1,3 +1,4 @@
+#include "yak/clocksource.h"
 #include <stdint.h>
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>
@@ -33,43 +34,38 @@ static uint64_t hpet_read(const uint64_t reg)
 	return *(volatile uint64_t *)(hpet.base + reg);
 }
 
-uint64_t hpet_counter()
+static uint64_t hpet_counter(struct clocksource *)
 {
 	return hpet_read(HPET_REG_COUNTER_MAIN);
 }
 
-void hpet_enable()
+static void hpet_enable()
 {
 	hpet_write(HPET_REG_GENERAL_CONFIG,
 		   hpet_read(HPET_REG_GENERAL_CONFIG) | 0b1);
 }
 
-void hpet_disable()
+static void hpet_disable()
 {
 	hpet_write(HPET_REG_GENERAL_CONFIG,
 		   hpet_read(HPET_REG_GENERAL_CONFIG) & ~(0b1));
 }
 
-uint64_t hpet_nanos()
-{
-	return (hpet_counter() * hpet.period) / 1000000;
-}
-
-static int hpet_probe()
+static bool hpet_probe()
 {
 	uacpi_table tbl;
 	if (uacpi_table_find_by_signature("HPET", &tbl) != UACPI_STATUS_OK)
-		return YAK_NOENT;
+		return false;
 	uacpi_table_unref(&tbl);
-	return YAK_SUCCESS;
+	return true;
 }
 
-status_t hpet_setup()
+static status_t hpet_setup(struct clocksource *clock)
 {
-	IF_ERR(hpet_probe()) return YAK_NOENT;
-
 	uacpi_table tbl;
-	uacpi_table_find_by_signature("HPET", &tbl);
+	if (uacpi_table_find_by_signature("HPET", &tbl) != UACPI_STATUS_OK)
+		return YAK_NOT_SUPPORTED;
+
 	struct acpi_hpet *hpet_table = tbl.ptr;
 
 	EXPECT(vm_map_mmio(kmap(), hpet_table->address.address, PAGE_SIZE,
@@ -81,12 +77,30 @@ status_t hpet_setup()
 	hpet_write(HPET_REG_COUNTER_MAIN, 0);
 	hpet_enable();
 
+	clock->frequency = FEMTO / hpet.period;
+
 	uacpi_table_unref(&tbl);
 
 	return YAK_SUCCESS;
 }
 
-nstime_t plat_getnanos()
+status_t hpet_init(struct clocksource *)
 {
-	return hpet_nanos();
+	return YAK_SUCCESS;
+}
+
+struct clocksource hpet_clocksource = {
+	.name = "hpet",
+	.quality = 200,
+	.frequency = -1,
+	.counter = hpet_counter,
+	.probe = hpet_probe,
+	.setup = hpet_setup,
+	.init = hpet_init,
+	.flags = CLOCKSOURCE_EARLY,
+};
+
+void hpet_register()
+{
+	clocksource_register(&hpet_clocksource);
 }

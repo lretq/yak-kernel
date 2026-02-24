@@ -100,10 +100,10 @@ static status_t poll_many(struct kobject **objs, size_t count, nstime_t timeout)
 
 	// deadline after which we stop polling
 	if (has_timeout)
-		deadline = plat_getnanos() + timeout;
+		deadline = uptime() + timeout;
 
 	do {
-		if (has_timeout && plat_getnanos() >= deadline) {
+		if (has_timeout && uptime() >= deadline) {
 			// polling took too long!
 			break;
 		}
@@ -141,10 +141,10 @@ static status_t poll_single(struct kobject *obj, nstime_t timeout)
 
 	// deadline after which we stop polling
 	if (has_timeout)
-		deadline = plat_getnanos() + timeout;
+		deadline = uptime() + timeout;
 
 	do {
-		if (has_timeout && plat_getnanos() >= deadline) {
+		if (has_timeout && uptime() >= deadline) {
 			// polling took too long!
 			break;
 		}

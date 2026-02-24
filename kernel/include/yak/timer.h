@@ -30,7 +30,7 @@ enum {
 struct timer;
 
 // get nanoseconds from a monotonic ns clock
-nstime_t plat_getnanos();
+nstime_t uptime();
 // arm to deadline relative to clock from above
 void plat_arm_timer(nstime_t deadline);
 

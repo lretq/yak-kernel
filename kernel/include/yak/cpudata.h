@@ -1,5 +1,6 @@
 #pragma once
 
+#include "yak/clocksource.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,6 +51,10 @@ struct cpu {
 	struct spinlock timer_lock;
 	HEAP_HEAD(timer_heap, timer) timer_heap;
 	struct dpc timer_update_dpc;
+
+	// clocksource
+	struct clocksource *clocksource;
+	nstime_t clock_offset;
 
 	// remote calls
 	struct remote_call_queue rc_queue;

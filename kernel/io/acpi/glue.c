@@ -176,16 +176,13 @@ void uacpi_kernel_free(void *mem)
 
 uacpi_u64 uacpi_kernel_get_nanoseconds_since_boot(void)
 {
-	return plat_getnanos();
+	return uptime();
 }
 
 void uacpi_kernel_stall(uacpi_u8 usec)
 {
-	// ns
-	usec *= 1000;
-
-	uint64_t deadline = plat_getnanos() + usec;
-	while (plat_getnanos() < deadline) {
+	nstime_t deadline = uptime() + USTIME(usec);
+	while (uptime() < deadline) {
 		busyloop_hint();
 	}
 }

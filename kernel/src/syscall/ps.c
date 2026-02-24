@@ -97,9 +97,9 @@ DEFINE_SYSCALL(SYS_GETSID, getsid, pid_t pid)
 DEFINE_SYSCALL(SYS_SLEEP, sleep, struct timespec *req, struct timespec *rem)
 {
 	nstime_t sleep_ns = STIME(req->tv_sec) + req->tv_nsec;
-	nstime_t start = plat_getnanos();
+	nstime_t start = uptime();
 	ksleep(sleep_ns);
-	nstime_t time_passed = plat_getnanos() - start;
+	nstime_t time_passed = uptime() - start;
 
 	if (rem) {
 		nstime_t remaining =

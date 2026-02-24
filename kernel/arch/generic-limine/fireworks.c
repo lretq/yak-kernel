@@ -381,7 +381,7 @@ void SpawnExplodeable()
 
 void PerformFireworksTest()
 {
-	uint64_t end_time = plat_getnanos() + BIGTIME(1, 1, 1, 1);
+	uint64_t end_time = uptime() + BIGTIME(1, 1, 1, 1);
 
 	Init();
 	g_randGen ^= RandTscBased();
@@ -394,7 +394,7 @@ void PerformFireworksTest()
 	KeInitializeTimer(&Timer);
 
 	while (1) {
-		if (plat_getnanos() > end_time)
+		if (uptime() > end_time)
 			break;
 		for (int i = 0; i < 3; i++) {
 			int SpawnCount = Rand() % 2 + 1;

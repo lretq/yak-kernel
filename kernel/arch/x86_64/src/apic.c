@@ -122,9 +122,9 @@ static void lapic_calibrate()
 		lapic_write(LAPIC_REG_TIMER_CURRENT, 0);
 		uint32_t start_val = UINT32_MAX;
 		lapic_write(LAPIC_REG_TIMER_INITIAL, start_val);
-		nstime_t deadline = plat_getnanos() + wait_ms * 1000000;
+		nstime_t deadline = uptime() + wait_ms * 1000000;
 
-		while (plat_getnanos() < deadline) {
+		while (uptime() < deadline) {
 			busyloop_hint();
 		}
 
@@ -191,7 +191,7 @@ void plat_arm_timer(nstime_t deadline)
 		return;
 	}
 
-	nstime_t delta = deadline - plat_getnanos();
+	nstime_t delta = deadline - uptime();
 
 	uint64_t ticks;
 	ticks = (DIV_ROUNDUP(delta, 1000000)) *

@@ -1,3 +1,4 @@
+#include "yak/clocksource.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <yak/init.h>
@@ -220,8 +221,10 @@ void lapic_enable();
 
 void timer_setup()
 {
-	extern status_t hpet_setup();
-	EXPECT(hpet_setup());
+	extern void hpet_register();
+	hpet_register();
+
+	clocksource_early_init(0);
 
 	apic_global_init();
 	lapic_enable();
@@ -303,6 +306,8 @@ static void c_ap_entry(struct limine_mp_info *info)
 
 	cpudata_init(cpudata, (void *)extra->stack_top);
 
+	clocksource_init();
+
 	vm_map_activate(kmap());
 
 	setup_cpu();
@@ -352,6 +357,8 @@ void wait_for_all(size_t max_cpu)
 void start_aps()
 {
 	disable_interrupts();
+
+	clocksource_init();
 
 	struct limine_mp_response *response = mp_request.response;
 

@@ -43,6 +43,8 @@ void cpudata_init(struct cpu *cpu, void *stack_top)
 
 	cpu->cpu_id = __atomic_fetch_add(&next_cpu_id, 1, __ATOMIC_RELAXED);
 
+	clocksource_cpudata_init();
+
 	if (cpu->cpu_id >= MAX_NR_CPUS) {
 		panic("CPUs >= MAX_NR_CPUS\n");
 	}
