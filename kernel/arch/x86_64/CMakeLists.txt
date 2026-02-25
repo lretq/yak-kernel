@@ -3,6 +3,7 @@ yak_add_sources(
 	src/ipl.c
 	src/archctl.c
 	src/hpet.c
+	src/kvmclock.c
 	src/sched.c
 	src/pci.c
 	src/gdt.c

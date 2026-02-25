@@ -29,16 +29,6 @@ static inline uint64_t rdmsr(uint32_t index)
 	return ((uint64_t)high << 32) | (uint64_t)low;
 }
 
-static inline uint64_t rdtsc()
-{
-	uint32_t low, high;
-	// serialize
-	asm volatile("cpuid\n\t"
-		     "rdtsc"
-		     : "=a"(low), "=d"(high)::"rbx", "rcx");
-	return ((uint64_t)high << 32) | low;
-}
-
 static inline void outb(uint16_t port, uint8_t data)
 {
 	asm volatile("out %%al, %%dx" : : "a"(data), "d"(port));

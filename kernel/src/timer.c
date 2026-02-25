@@ -155,8 +155,7 @@ void kstall(nstime_t ns)
 struct timespec time_now()
 {
 	struct timespec ts;
-	// XXX: RTC or something
-	nstime_t now = uptime();
+	nstime_t now = nettime();
 	ts.tv_sec = now / STIME(1);
 	ts.tv_nsec = now - (ts.tv_sec * STIME(1));
 	return ts;

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "yak/clocksource.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -8,6 +7,7 @@ extern "C" {
 #include <stddef.h>
 #include <heap.h>
 #include <yak/ipl.h>
+#include <yak/clocksource.h>
 #include <yak/dpc.h>
 #include <yak/queue.h>
 #include <yak/percpu.h>

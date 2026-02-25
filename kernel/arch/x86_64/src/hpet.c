@@ -1,4 +1,4 @@
-#include "yak/clocksource.h"
+#include <yak/clocksource.h>
 #include <stdint.h>
 #include <uacpi/acpi.h>
 #include <uacpi/tables.h>

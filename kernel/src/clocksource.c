@@ -88,6 +88,7 @@ static nstime_t system_realtime_offset;
 void clocksource_cpudata_init()
 {
 	PERCPU_FIELD_STORE(clocksource, &dummy_clock);
+	PERCPU_FIELD_STORE(clock_offset, 0);
 }
 
 void clocksource_early_init(nstime_t offset)
@@ -135,7 +136,14 @@ nstime_t uptime()
 	nstime_t offset = PERCPU_FIELD_LOAD(clock_offset);
 	uint64_t ctr = source->counter(source);
 	uint64_t freq = source->frequency;
-	return offset + (ctr * 1000000000) / freq;
+
+	uint64_t quotient = ctr / freq;
+	uint64_t remainder = ctr % freq;
+
+	uint64_t ns = quotient * 1000000000ULL;
+	ns += (remainder * 1000000000ULL) / freq;
+
+	return offset + ns;
 }
 
 nstime_t nettime()

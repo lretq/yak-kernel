@@ -16,6 +16,9 @@
 #include <yak/vm/pmm.h>
 #include <yak/syscall.h>
 #include <uacpi/uacpi.h>
+#include <limine.h>
+
+#define LIMINE_REQ [[gnu::used, gnu::section(".limine_requests")]]
 
 #include "asm.h"
 #include "gdt.h"
@@ -219,12 +222,22 @@ void init_early_output()
 void apic_global_init();
 void lapic_enable();
 
+LIMINE_REQ struct limine_date_at_boot_request date_at_boot = {
+	.id = LIMINE_DATE_AT_BOOT_REQUEST_ID,
+};
+
 void timer_setup()
 {
 	extern void hpet_register();
 	hpet_register();
 
-	clocksource_early_init(0);
+	extern void kvmclock_register();
+	kvmclock_register();
+
+	uint64_t time = 0;
+	if (date_at_boot.response)
+		time = STIME(date_at_boot.response->timestamp);
+	clocksource_early_init(time);
 
 	apic_global_init();
 	lapic_enable();
@@ -254,9 +267,6 @@ INIT_ENTAILS(x86_ipi_setup, bsp_ready);
 INIT_DEPS(x86_ipi_setup, x86_timer_setup);
 INIT_NODE(x86_ipi_setup, ipi_setup);
 
-#include <limine.h>
-
-#define LIMINE_REQ [[gnu::used, gnu::section(".limine_requests")]]
 LIMINE_REQ struct limine_mp_request mp_request = {
 	.id = LIMINE_MP_REQUEST_ID,
 };
