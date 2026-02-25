@@ -101,6 +101,8 @@ static inline unsigned char vtype_to_dtype(enum vtype t)
 #define SETATTR_GID (1 << 2)
 #define SETATTR_ATIME (1 << 3)
 #define SETATTR_MTIME (1 << 4)
+// Importante! Only the kernel is allowed to set BTIME, e.g. on file creation
+#define SETATTR_BTIME (1 << 5)
 
 #define SETATTR_ALL \
 	SETATTR_MODE | SETATTR_UID | SETATTR_GID | SETATTR_ATIME | SETATTR_MTIME

@@ -167,6 +167,7 @@ void initrd_unpack_tar(const char *path, const char *data, size_t len)
 		time_t mtime = HDR_OFLD(mtime);
 		attr.mtime = (struct timespec){ .tv_sec = mtime, .tv_nsec = 0 };
 		attr.atime = attr.mtime;
+		attr.btime = attr.mtime;
 
 		switch (hdr->filetype) {
 		case 'L': { // GNU long filename

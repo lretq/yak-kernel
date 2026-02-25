@@ -233,6 +233,7 @@ status_t devfs_register(char *name, int type, int major, int minor,
 	struct timespec now = time_now();
 	attr.mtime = now;
 	attr.atime = now;
+	attr.btime = now;
 	attr.uid = 0;
 	attr.gid = 0;
 	attr.mode = 0600;

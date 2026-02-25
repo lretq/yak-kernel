@@ -21,10 +21,10 @@
 
 static void vattr_fill(struct kprocess *proc, struct vattr *attr, mode_t mode)
 {
-	// XXX: correct time
 	struct timespec now = time_now();
 	attr->mtime = now;
 	attr->atime = now;
+	attr->btime = now;
 	attr->uid = proc->euid;
 	attr->gid = proc->egid;
 	attr->mode = mode;

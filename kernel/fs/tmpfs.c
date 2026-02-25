@@ -46,6 +46,8 @@ static status_t tmpfs_setattr(struct vnode *vn, unsigned int what,
 		t_atr->atime = attr->atime;
 	if (what & SETATTR_MTIME)
 		t_atr->mtime = attr->mtime;
+	if (what & SETATTR_BTIME)
+		t_atr->btime = attr->btime;
 	if (what & SETATTR_GID)
 		t_atr->gid = attr->gid;
 	if (what & SETATTR_UID)
@@ -95,7 +97,7 @@ static status_t tmpfs_create(struct vnode *parent, enum vtype type, char *name,
 	// All directories have '.' as well
 	node->vattr.nlinks = (type == VDIR) ? 2 : 1;
 
-	tmpfs_setattr(&node->vnode, SETATTR_ALL, initial_attr);
+	tmpfs_setattr(&node->vnode, SETATTR_ALL | SETATTR_BTIME, initial_attr);
 
 	// Try to add link to parent first -> less to cleanup
 	if (type == VDIR) {
