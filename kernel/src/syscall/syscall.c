@@ -43,6 +43,7 @@
 	X(SYS_SYMLINKAT, sys_symlinkat, "dirfd=%d target=%p link=%p")        \
 	X(SYS_LINKAT, sys_linkat,                                            \
 	  "olddirfd=%d oldpath=%p newdirfd=%d newpath=%p flags=%d")          \
+	X(SYS_CLOCK_GET, sys_clock_get, "clock=%d ts=%p")                    \
 	X(SYS_DEBUG_SLEEP, sys_debug_sleep, "duration=%ld ns")
 
 #define SYSCALL_LIST_NOLOG        \
