@@ -3,6 +3,8 @@
 #include <string.h>
 #include <yak/console.h>
 #include <yak/spinlock.h>
+#include <yak/timer.h>
+#include <yak/types.h>
 #include <yak/hint.h>
 #include <yak/cpudata.h>
 #include <yak/log.h>
@@ -53,11 +55,16 @@ __no_san void vprintk(unsigned short level, const char *fmt, va_list args)
 	ctx.size = 0;
 	ctx.msg = ctx.buf;
 
-#define CASE(LEVEL, PREFIX)                                                  \
-	case LEVEL:                                                          \
-		ctx.size = npf_snprintf(ctx.buf, LOG_BUF_SIZE,               \
-					"\x1b[0;37m[#%02zu]\x1b[0m " PREFIX, \
-					cpuid());                   \
+	nstime_t now = uptime();
+	unsigned long long sec = now / 1000000000ULL;
+	unsigned long long msec = (now % 1000000000ULL) / 1000000ULL;
+
+#define CASE(LEVEL, PREFIX)                                                \
+	case LEVEL:                                                        \
+		ctx.size = npf_snprintf(                                   \
+			ctx.buf, LOG_BUF_SIZE,                             \
+			"\x1b[0;37m[#%02zu][%5llu.%03llu]\x1b[0m " PREFIX, \
+			cpuid(), sec, msec);                               \
 		break;
 
 	switch (level) {
