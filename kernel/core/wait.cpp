@@ -1,8 +1,9 @@
-#include <yak/assert.h>
 #include <expected>
 #include <frg/mutex.hpp>
 #include <ranges>
 #include <span>
+#include <yak/assert.h>
+#include <yak/cpudata.h>
 #include <yak/ipl-guard.h>
 #include <yak/ipl.h>
 #include <yak/kobject.h>
@@ -110,12 +111,12 @@ static std::expected<int, Status> poll_many(std::span<KObject *> objects,
 
 static std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
   // the idle thread must not wait!
-  assert(!Scheduler::is_idle());
+  assert(!thread.is_idle());
 
   thread.wait_phase_ = WaitPhase::Committed;
   thread.state_ = ThreadState::Blocked;
 
-  Scheduler::for_this_cpu().yield(&thread);
+  CpuData::local_scheduler().yield(&thread);
   // unlocks thread
   assert(iplget() == Ipl::dispatch);
 

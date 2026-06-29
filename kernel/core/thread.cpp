@@ -1,7 +1,7 @@
 #include <algorithm>
-#include <yak/assert.h>
 #include <span>
 #include <string.h>
+#include <yak/assert.h>
 #include <yak/cpudata.h>
 #include <yak/ipl.h>
 #include <yak/log.h>
@@ -41,7 +41,7 @@ void Thread::exit() {
 
   state_ = ThreadState::Terminating;
 
-  Scheduler::for_this_cpu().yield(this);
+  CpuData::local_scheduler().yield(this);
   __builtin_unreachable();
 }
 
@@ -68,8 +68,12 @@ void Thread::unwait(int wait_status) {
 
   // Unblock the thread
   if (state_ == ThreadState::Blocked) {
-    Scheduler::for_this_cpu().resume_locked(this);
+    CpuData::local_scheduler().resume_locked(this);
   }
+}
+
+bool Thread::is_idle() {
+  return last_cpu_->sched->idle_thread_ == this;
 }
 
 } // namespace yak

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <bit>
 #include <concepts>
 #include <cstdint>
+#include <limits>
 
 namespace yak {
 template <auto V>
@@ -70,22 +72,6 @@ constexpr auto align_down(T1 addr, T2 align) noexcept {
   using U =
       std::common_type_t<std::make_unsigned_t<T1>, std::make_unsigned_t<T2>>;
   return static_cast<U>(addr) & ~(static_cast<U>(align) - 1);
-}
-
-template <std::unsigned_integral T>
-[[gnu::const]]
-inline constexpr unsigned int ilog2(T x) noexcept {
-  // undefined for 0
-  return (sizeof(T) == 8) ? 64 - __builtin_clzll(x)
-                          : 32 - __builtin_clz(static_cast<uint32_t>(x));
-}
-
-template <std::unsigned_integral T>
-[[gnu::const]]
-inline constexpr unsigned int next_ilog2(T x) noexcept {
-  if (x <= 1)
-    return 1;
-  return ilog2(x - 1) + 1;
 }
 
 } // namespace yak

@@ -123,8 +123,8 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
                   },
                   &obj, (void *) 2);
 
-  Scheduler::for_this_cpu().resume(&t1);
-  Scheduler::for_this_cpu().resume(&t2);
+  CpuData::local_scheduler().resume(&t1);
+  CpuData::local_scheduler().resume(&t2);
 
   // XXX: rather run this on the kmain thread!
   init_engine.run();

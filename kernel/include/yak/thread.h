@@ -95,6 +95,8 @@ struct Thread {
   void exit();
 
   void unwait(int wait_status);
+
+  bool is_idle();
 };
 
 using ThreadList = frg::intrusive_list<

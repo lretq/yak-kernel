@@ -51,10 +51,6 @@ void Scheduler::init(CpuData *cpu, Thread *idle_thread) {
   sched->idle_thread_ = idle_thread;
 }
 
-Scheduler &Scheduler::for_this_cpu() {
-  return *CpuData::Current()->sched;
-}
-
 // Both scheduler and thread shall be locked upon entry
 void Scheduler::insert(Thread *thread, bool remote) {
   while (true) {

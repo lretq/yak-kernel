@@ -38,6 +38,10 @@ struct CpuData {
   static inline bool OnBsp() {
     return CPUDATA_LOAD(bsp);
   }
+
+  static inline Scheduler &local_scheduler() {
+    return *Current()->sched.get();
+  }
 };
 
 } // namespace yak

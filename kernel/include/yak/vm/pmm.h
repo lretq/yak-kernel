@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <optional>
 #include <yak/config.h>
@@ -36,8 +37,16 @@ static constexpr size_t MAX_AFFINITIES = 64;
 extern FixedArena<Affinity, MAX_AFFINITIES> pmm_affinities;
 
 constexpr inline unsigned int pmm_size_to_order(size_t size) {
-  return next_ilog2(size) - arch::PAGE_SHIFT - 1;
+  size_t pages = align_up(size, arch::PAGE_SIZE) >> arch::PAGE_SHIFT;
+  return std::bit_width(pages - 1);
 }
+
+#ifdef x86_64
+static_assert(pmm_size_to_order(4096) == 0);
+static_assert(pmm_size_to_order(4097) == 1);
+static_assert(pmm_size_to_order(8192) == 1);
+static_assert(pmm_size_to_order(8193) == 2);
+#endif
 
 void pmm_add_region(paddr_t base, paddr_t end);
 
