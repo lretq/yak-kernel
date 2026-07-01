@@ -7,16 +7,11 @@ include(build.cmake)
 find_package(PkgConfig REQUIRED)
 
 if (NOT YAK_HOSTED_MODE)
-pkg_check_modules(FREESTND_C_HDRS REQUIRED IMPORTED_TARGET freestnd-c-hdrs-x86_64)
-pkg_check_modules(FREESTND_CXX_HDRS REQUIRED IMPORTED_TARGET freestnd-cxx-hdrs-x86_64)
+	yak_add_includes(${VENDOR_DIR}/freestnd-c-hdrs/${YAK_ARCH}/include)
+	yak_add_includes(${VENDOR_DIR}/freestnd-cxx-hdrs/${YAK_ARCH}/include)
 endif()
-pkg_check_modules(FRIGG REQUIRED IMPORTED_TARGET frigg)
 
-yak_add_includes(
-	${FREESTND_C_HDRS_INCLUDE_DIRS}
-	${FREESTND_CXX_HDRS_INCLUDE_DIRS}
-	${FRIGG_INCLUDE_DIRS}
-)
+yak_add_includes(${VENDOR_DIR}/frigg/include)
 
 find_package(Git QUIET)
 
@@ -157,17 +152,6 @@ yak_link_options(
 	--eh-frame-hdr
 	-gc-sections
 )
-
-yak_link(
-	PkgConfig::FRIGG
-)
-
-if (NOT YAK_HOSTED_MODE)
-yak_link(
-	PkgConfig::FREESTND_C_HDRS
-	PkgConfig::FREESTND_CXX_HDRS
-)
-endif()
 
 yak_add_sources(
 	${VENDOR_DIR}/flanterm/src/flanterm.c

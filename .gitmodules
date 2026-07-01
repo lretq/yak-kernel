@@ -7,3 +7,12 @@
 [submodule "vendor/flanterm"]
 	path = vendor/flanterm
 	url = https://github.com/mintsuki/flanterm
+[submodule "vendor/freestnd-c-hdrs"]
+	path = vendor/freestnd-c-hdrs
+	url = https://github.com/osdev0/freestnd-c-hdrs
+[submodule "vendor/freestnd-cxx-hdrs"]
+	path = vendor/freestnd-cxx-hdrs
+	url = https://github.com/osdev0/freestnd-cxx-hdrs
+[submodule "vendor/frigg"]
+	path = vendor/frigg
+	url = https://github.com/managarm/frigg
