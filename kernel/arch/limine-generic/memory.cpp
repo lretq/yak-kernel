@@ -1,6 +1,5 @@
 #define pr_fmt(fmt) "limine: " fmt
 
-#include <yak/assert.h>
 #include <cstddef>
 #include <limine-generic/init.h>
 #include <limine-generic/request.h>
@@ -8,6 +7,8 @@
 #include <span>
 #include <string.h>
 #include <yak/arch-mm.h>
+#include <yak/assert.h>
+#include <yak/config.h>
 #include <yak/kernel-file.h>
 #include <yak/log.h>
 #include <yak/math.h>
@@ -299,39 +300,20 @@ static const char* memmap_type_to_string(uint64_t type) {
 }
 // clang-format on
 
-constexpr bool direct_map_4gib = false;
 constexpr size_t FOUR_GIB = 4ULL * 1024 * 1024 * 1024;
 
 // This *could* use the memblock,
 // however I'm not quite sure if that's the best option here
 static void map_hhdm(std::span<limine_memmap_entry *> memmap) {
-  if constexpr (direct_map_4gib) {
-    // Map the first 4 GiB of memory regardless
-    kmap.page_map().enter_boot_large(0, arch::HHDM_BASE, FOUR_GIB,
-                                     PROT_READ | PROT_WRITE, CACHE_DEFAULT);
-  }
-
   paddr_t last_end = 0;
 
   // Then map any other regions from memmap
   for (auto entry : memmap) {
-    if constexpr (direct_map_4gib) {
-      if (entry->base + entry->length <= FOUR_GIB)
-        continue;
-    }
-
     if (entry->type == LIMINE_MEMMAP_BAD_MEMORY)
       continue;
 
     paddr_t base = align_down<arch::PAGE_SIZE>(entry->base);
     size_t length = align_up<arch::PAGE_SIZE>(entry->length);
-
-    if constexpr (direct_map_4gib) {
-      if (entry->base < FOUR_GIB) {
-        length -= FOUR_GIB - entry->base;
-        base = FOUR_GIB;
-      }
-    }
 
     paddr_t end = base + length;
 
@@ -401,14 +383,21 @@ void mem_init() {
 void mem_reclaim() {
   auto memmap = get_memmap();
   boot_memblock.coalesce_blocks();
+#if CONFIG_DEBUG
   boot_memblock.reserved.print();
+#endif
+
   size_t reclaimed_count = 0;
+
   for (auto entry : memmap) {
+    // search for bootloader memory
     if (entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
       continue;
+
     boot_memblock.free(entry->base, entry->length);
     reclaimed_count += entry->length;
   }
+
   pr_info("reclaim %ld KiB\n", reclaimed_count / 1024);
 }
 
