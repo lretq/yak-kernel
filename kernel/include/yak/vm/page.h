@@ -33,15 +33,6 @@ struct [[gnu::aligned(64)]] Page {
     return to_pfn() << arch::PAGE_SHIFT;
   }
 
-  inline vaddr_t to_va() const {
-    paddr_t pa = to_pa();
-    return arch::p2v(pa);
-  }
-
-  inline void *to_va_ptr() const {
-    return reinterpret_cast<void *>(to_va());
-  }
-
   inline size_t block_size() const {
     return 1ULL << (order + arch::PAGE_SHIFT);
   }

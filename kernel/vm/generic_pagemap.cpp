@@ -21,14 +21,15 @@
 
 #define pr_fmt(fmt) "generic-pagemap: " fmt
 
-#include <yak/assert.h>
 #include <iterator>
 #include <yak/arch-mm.h>
 #include <yak/arch-pagemap.h>
+#include <yak/assert.h>
 #include <yak/log.h>
 #include <yak/math.h>
 #include <yak/panic.h>
 #include <yak/util.h>
+#include <yak/vm/direct.h>
 #include <yak/vm/flags.h>
 #include <yak/vm/generic_pagemap.h>
 #include <yak/vm/memblock.h>
@@ -40,10 +41,12 @@ template <typename Traits> void GenericPageMap<Traits>::bootstrap_kernel() {
                                                    arch::PAGE_SIZE, NUMA_LOCAL),
                      "boot pagemap bootstrap oom");
 
-  Pte *l1 = (Pte *) arch::p2v(top_level);
+  auto window = expect(MapWindow::create(top_level, arch::PAGE_SIZE),
+                       "failed to map PageMap top level");
+  Pte *l1 = window.as<Pte>();
 
-  // The kernel L1 entries are precreated.
-  // They are shared amongst all maps.
+  // The kernel L1 entries are precreated because
+  // the higher half is shared across all maps.
   auto l1_entries = Traits::LEVEL_ENTRIES[0];
   for (size_t i = l1_entries / 2; i < l1_entries; i++) {
     auto dir_pa = expect(boot_memblock.allocate_zeroed(
@@ -156,7 +159,10 @@ template <typename Traits>
 GenericPageMap<Traits>::AtomicPte *
 GenericPageMap<Traits>::fetch(vaddr_t va, size_t to_level, bool allocate,
                               bool is_boot) {
-  AtomicPte *table = reinterpret_cast<AtomicPte *>(arch::p2v(top_level));
+
+  auto window = expect(MapWindow::create(top_level, arch::PAGE_SIZE),
+                       "failed to map top level");
+  AtomicPte *table = window.as<AtomicPte>();
 
   for (size_t lvl = Traits::levels() - 1;; lvl--) {
     AtomicPte *ptep = &table[get_index(va, lvl)];
@@ -204,7 +210,9 @@ GenericPageMap<Traits>::fetch(vaddr_t va, size_t to_level, bool allocate,
       assert(!Traits::pte_is_large(pte, lvl));
     }
 
-    table = reinterpret_cast<AtomicPte *>(arch::p2v(Traits::pte_addr(pte)));
+    window = expect(MapWindow::create(Traits::pte_addr(pte), arch::PAGE_SIZE),
+                    "failed to map sub table");
+    table = window.as<AtomicPte>();
   }
 
   return nullptr;

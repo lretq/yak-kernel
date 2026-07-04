@@ -8,7 +8,7 @@ template <typename T> T expect(std::optional<T> opt, const char *msg) {
   if (!opt) [[unlikely]] {
     panic(msg);
   }
-  return *opt;
+  return std::move(*opt);
 }
 
 #define ENUM_BIT_OPS(name)                                \

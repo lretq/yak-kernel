@@ -3,6 +3,7 @@ yak_add_sources(
 	memblock.cpp
 	map.cpp
 	stack.cpp
+	direct.cpp
 )
 
 if (CONFIG_USE_GENERIC_PAGEMAP)

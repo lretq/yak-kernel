@@ -1,9 +1,10 @@
+#include "yak/vm/direct.h"
 #include <algorithm>
-#include <yak/assert.h>
 #include <cstring>
 #include <span>
 #include <string.h>
 #include <yak/arch-mm.h>
+#include <yak/assert.h>
 #include <yak/cpudata.h>
 #include <yak/log.h>
 #include <yak/math.h>
@@ -187,21 +188,10 @@ std::optional<paddr_t> Memblock::allocate(size_t size, size_t align, int nid) {
 std::optional<paddr_t> Memblock::allocate_zeroed(size_t size, size_t align,
                                                  int nid) {
   if (auto addr = allocate(size, align, nid)) {
-    void *ptr = reinterpret_cast<void *>(arch::p2v(*addr));
-    std::memset(ptr, 0, size);
+    zero_physical_memory(*addr, size);
     return addr;
   }
   return std::nullopt;
-}
-
-std::optional<vaddr_t> Memblock::allocate_virtual(size_t size, size_t align,
-                                                  int nid) {
-  return allocate(size, align, nid).transform(arch::p2v);
-}
-
-std::optional<vaddr_t>
-Memblock::allocate_virtual_zeroed(size_t size, size_t align, int nid) {
-  return allocate_zeroed(size, align, nid).transform(arch::p2v);
 }
 
 void Memblock::free(paddr_t pa, size_t size) {
@@ -228,10 +218,6 @@ void Memblock::free(paddr_t pa, size_t size) {
 
   // Add the free block back to usable memory
   usable.add(pa, size, r.node_id_);
-}
-
-void Memblock::free_virtual(vaddr_t va, size_t size) {
-  return free(arch::v2p(va), size);
 }
 
 void Memblock::assign_node_to_range(paddr_t base, size_t size, int nid) {

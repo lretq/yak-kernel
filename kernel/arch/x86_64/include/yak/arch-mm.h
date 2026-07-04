@@ -31,19 +31,8 @@ enum {
   CACHE_DISABLE = CACHE_UNCACHED,
 };
 
-[[gnu::pure]]
-inline vaddr_t p2v(paddr_t pa) {
-  return static_cast<vaddr_t>(HHDM_BASE + pa);
-}
-
-[[gnu::const]]
 inline size_t p2pfn(paddr_t pa) {
   return pa >> PAGE_SHIFT;
-}
-
-[[gnu::pure]]
-inline paddr_t v2p(vaddr_t va) {
-  return static_cast<vaddr_t>(va - HHDM_BASE);
 }
 
 } // namespace yak::arch

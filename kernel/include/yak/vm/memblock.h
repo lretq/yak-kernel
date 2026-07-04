@@ -68,11 +68,7 @@ struct Memblock {
   }
 
   std::optional<paddr_t> allocate(size_t size, size_t align, int nid);
-  std::optional<vaddr_t> allocate_virtual(size_t size, size_t align, int nid);
-
   std::optional<paddr_t> allocate_zeroed(size_t size, size_t align, int nid);
-  std::optional<paddr_t> allocate_virtual_zeroed(size_t size, size_t align,
-                                                 int nid);
 
   void free(paddr_t pa, size_t size);
   void free_virtual(vaddr_t va, size_t size);

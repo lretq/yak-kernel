@@ -1,5 +1,6 @@
 #include "yak/kobject.h"
 #include "yak/util.h"
+#include "yak/vm/direct.h"
 #include "yak/wait.h"
 #include <cstddef>
 #include <span>
@@ -91,12 +92,16 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   Event ev = Event(false, false);
 
   auto pg_stack1 = expect(pmm_alloc(0, PageUse::Wired, ALLOC_ZERO), "oom");
+  auto pg_stack_win1 =
+      expect(MapWindow::create(pg_stack1->to_pa(), 4096), "could not map");
   auto pg_stack2 = expect(pmm_alloc(0, PageUse::Wired, ALLOC_ZERO), "oom");
+  auto pg_stack_win2 =
+      expect(MapWindow::create(pg_stack2->to_pa(), 4096), "could not map");
 
   auto t1 = Thread("test1", SchedPrio::RealTime, &kernel_process, false);
   auto t2 = Thread("test2", SchedPrio::RealTime, &kernel_process, false);
 
-  t1.init_context((void *) (pg_stack1->to_va() + 4096),
+  t1.init_context((void *) ((vaddr_t) pg_stack_win1.data() + 4096),
                   [](void *obj, void *n) {
                     pr_debug("enter t@%zu! (%p)\n", (uint64_t) n, obj);
                     auto &o = *(Event *) obj;
@@ -109,7 +114,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
                   },
                   &ev, (void *) 1);
 
-  t2.init_context((void *) (pg_stack2->to_va() + 4096),
+  t2.init_context((void *) ((vaddr_t) pg_stack_win2.data() + 4096),
                   [](void *obj, void *n) {
                     pr_debug("enter t@%zu! (%p)\n", (uint64_t) n, obj);
                     auto &o = *(Event *) obj;

@@ -20,6 +20,7 @@
 #include <yak/numa.h>
 #include <yak/panic.h>
 #include <yak/util.h>
+#include <yak/vm/direct.h>
 #include <yak/vm/memblock.h>
 #include <yak/vm/pmm.h>
 
@@ -243,16 +244,21 @@ void parse_numa() {
   uacpi_table_unref(&tbl);
 }
 
+static std::optional<MapWindow> early_buffer_window;
+
 void post_memblock() {
-  auto buf = reinterpret_cast<void *>(
-      expect(boot_memblock.allocate_virtual(PAGE_SIZE, PAGE_SIZE, NUMA_ANY),
-             "could not allocate early table buffer"));
-  pr_debug("early table buffer: 0x%p\n", buf);
+  auto buf = expect(boot_memblock.allocate(PAGE_SIZE, PAGE_SIZE, NUMA_ANY),
+                    "could not allocate early table buffer");
+  pr_debug("early table buffer: %#lx\n", buf);
 
   auto total_before =
       boot_memblock.usable.total_size_ + boot_memblock.reserved.total_size_;
 
-  uacpi_setup_early_table_access(buf, PAGE_SIZE);
+  auto win = expect(MapWindow::create(buf, PAGE_SIZE),
+                    "failed to map uacpi early buffer");
+  early_buffer_window.emplace(std::move(win));
+
+  uacpi_setup_early_table_access(win.data(), PAGE_SIZE);
 
   parse_numa();
 

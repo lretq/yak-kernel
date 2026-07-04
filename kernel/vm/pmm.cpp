@@ -17,6 +17,7 @@
 #include <yak/spinlock.h>
 #include <yak/util.h>
 #include <yak/vm/address.h>
+#include <yak/vm/direct.h>
 #include <yak/vm/flags.h>
 #include <yak/vm/page.h>
 #include <yak/vm/pmm.h>
@@ -190,7 +191,11 @@ std::optional<Page *> pmm_alloc(unsigned int order, PageUse use,
   page->refcnt++;
 
   if (flags & ALLOC_ZERO) {
-    memset(page->to_va_ptr(), 0, page->block_size());
+    const auto addr = page->to_pa();
+    const auto size = page->block_size();
+
+    // Handled using MapWindow API
+    zero_physical_memory(addr, size);
   }
 
   return page;

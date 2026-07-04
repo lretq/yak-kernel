@@ -1,3 +1,4 @@
+#include "yak/vm/direct.h"
 #include <uacpi/types.h>
 #include <uacpi/uacpi.h>
 #include <yak/arch-mm.h>
@@ -30,7 +31,7 @@ void uacpi_kernel_log(uacpi_log_level level, const uacpi_char *logmsg) {
 }
 
 void *uacpi_kernel_map(uacpi_phys_addr addr, [[maybe_unused]] uacpi_size len) {
-  return reinterpret_cast<void *>(arch::p2v(addr));
+  return (void *) (addr + arch::HHDM_BASE);
 }
 
 void uacpi_kernel_unmap([[maybe_unused]] void *addr,
