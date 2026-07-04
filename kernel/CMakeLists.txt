@@ -7,8 +7,8 @@ include(build.cmake)
 find_package(PkgConfig REQUIRED)
 
 if (NOT YAK_HOSTED_MODE)
-	yak_add_includes(${VENDOR_DIR}/freestnd-c-hdrs/${YAK_ARCH}/include)
-	yak_add_includes(${VENDOR_DIR}/freestnd-cxx-hdrs/${YAK_ARCH}/include)
+	yak_add_includes(${VENDOR_DIR}/freestnd-c-hdrs/${YAK_ARCH}/include SYSTEM)
+	yak_add_includes(${VENDOR_DIR}/freestnd-cxx-hdrs/${YAK_ARCH}/include SYSTEM)
 endif()
 
 yak_add_includes(${VENDOR_DIR}/frigg/include)

@@ -8,7 +8,15 @@ function(yak_add_sources)
 endfunction()
 
 function(yak_add_includes)
-	target_include_directories(yak PRIVATE ${ARGV})
+	cmake_parse_arguments(PARSE_ARGV 0 "YAK" "SYSTEM" "" "")
+
+    if(YAK_SYSTEM)
+        # If SYSTEM was passed, forward it to target_include_directories
+        target_include_directories(yak SYSTEM PRIVATE ${YAK_UNPARSED_ARGUMENTS})
+    else()
+        # Otherwise, perform the standard private include
+        target_include_directories(yak PRIVATE ${YAK_UNPARSED_ARGUMENTS})
+    endif()
 endfunction()
 
 function(yak_compile_options)
