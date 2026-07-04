@@ -11,4 +11,5 @@ yak_add_sources(
 	softint.cpp
 	wait.cpp
 	kobject.cpp
+	event.cpp
 )

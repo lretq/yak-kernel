@@ -6,6 +6,7 @@
 #include <yak/arch.h>
 #include <yak/config.h>
 #include <yak/cpudata.h>
+#include <yak/event.h>
 #include <yak/init.h>
 #include <yak/log.h>
 #include <yak/math.h>
@@ -87,7 +88,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
 
   arch::post_pmm();
 
-  KObject obj = KObject(1, KObjectType::Sync);
+  Event ev = Event(false, false);
 
   auto pg_stack1 = expect(pmm_alloc(0, PageUse::Wired, ALLOC_ZERO), "oom");
   auto pg_stack2 = expect(pmm_alloc(0, PageUse::Wired, ALLOC_ZERO), "oom");
@@ -98,39 +99,41 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   t1.init_context((void *) (pg_stack1->to_va() + 4096),
                   [](void *obj, void *n) {
                     pr_debug("enter t@%zu! (%p)\n", (uint64_t) n, obj);
-                    auto &o = *(KObject *) obj;
+                    auto &o = *(Event *) obj;
                     KObject *objs[] = {&o};
                     auto res =
                         wait_for_many(objs, WaitMode::Block, WaitType::Any);
                     pr_debug("acq ok? %s\n", res.has_value() ? "yes" : "no");
-                    o.lock_.lock();
-                    o.signal_locked(false);
-                    o.signal_count_ = 1;
-                    o.lock_.unlock();
+
+                    o.alarm();
                   },
-                  &obj, (void *) 1);
+                  &ev, (void *) 1);
 
   t2.init_context((void *) (pg_stack2->to_va() + 4096),
                   [](void *obj, void *n) {
                     pr_debug("enter t@%zu! (%p)\n", (uint64_t) n, obj);
-                    auto &o = *(KObject *) obj;
+                    auto &o = *(Event *) obj;
                     auto res = wait_for_single(o, WaitMode::Block);
                     pr_debug("acq ok? %s\n", res.has_value() ? "yes" : "no");
-                    o.lock_.lock();
-                    o.signal_locked(false);
-                    o.signal_count_ = 1;
-                    o.lock_.unlock();
+
+                    o.alarm();
                   },
-                  &obj, (void *) 2);
+                  &ev, (void *) 2);
 
   CpuData::local_scheduler().resume(&t1);
   CpuData::local_scheduler().resume(&t2);
+
+  pr_debug("run next\n");
+
+  ev.alarm(false);
 
   // XXX: rather run this on the kmain thread!
   init_engine.run();
 
   auto buf_pg = expect(pmm_alloc(2, PageUse::Wired, 0), "test");
-  Page **buf_allocs = (Page **) buf_pg->to_va_ptr();
+  auto window = expect(MapWindow::create(buf_pg->to_pa(), buf_pg->block_size()),
+                       "could not map buf_pg");
+  Page **buf_allocs = window.as<Page *>();
   size_t n_allocs = (1 << (2 + 12)) / sizeof(Page *);
   pr_debug("buf_allocs:%p\n", buf_allocs);
   pr_debug("n_allocs:%zu\n", n_allocs);
