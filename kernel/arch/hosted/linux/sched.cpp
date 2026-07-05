@@ -11,7 +11,7 @@ void Thread::init_context(void *kstack_top, ThreadEntryFn entry, void *ctx1,
                           void *ctx2) {}
 
 [[noreturn]]
-void Scheduler::idle_loop() {
+void idle_loop() {
   while (true) {
     pr_debug("linux vcpu %zu is idle!\n", CPUDATA_LOAD(id));
     arch::interrupt_wait();

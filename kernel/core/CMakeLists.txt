@@ -12,4 +12,5 @@ yak_add_sources(
 	wait.cpp
 	kobject.cpp
 	event.cpp
+	idle.cpp
 )

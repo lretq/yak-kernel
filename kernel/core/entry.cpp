@@ -8,6 +8,7 @@
 #include <yak/config.h>
 #include <yak/cpudata.h>
 #include <yak/event.h>
+#include <yak/idle.h>
 #include <yak/init.h>
 #include <yak/log.h>
 #include <yak/math.h>
@@ -159,7 +160,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   };
   pr_debug("deduced \"this\" test: fib(10)=%d\n", fib(10));
 
-  bsp_cpu_data.sched->idle_loop();
+  idle_loop();
 }
 
 } // namespace yak
