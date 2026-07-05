@@ -89,7 +89,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
 
   arch::post_pmm();
 
-  Event ev = Event(false, false);
+  Event ev = Event(false, Event::Type::Notify);
 
   auto pg_stack1 = expect(pmm_alloc(0, PageUse::Wired, ALLOC_ZERO), "oom");
   auto pg_stack_win1 =
@@ -110,7 +110,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
                         wait_for_many(objs, WaitMode::Block, WaitType::Any);
                     pr_debug("acq ok? %s\n", res.has_value() ? "yes" : "no");
 
-                    o.alarm();
+                    // o.alarm();
                   },
                   &ev, (void *) 1);
 
@@ -121,7 +121,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
                     auto res = wait_for_single(o, WaitMode::Block);
                     pr_debug("acq ok? %s\n", res.has_value() ? "yes" : "no");
 
-                    o.alarm();
+                    // o.alarm();
                   },
                   &ev, (void *) 2);
 
@@ -130,7 +130,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
 
   pr_debug("run next\n");
 
-  ev.alarm(false);
+  ev.alarm();
 
   // XXX: rather run this on the kmain thread!
   init_engine.run();

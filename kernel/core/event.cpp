@@ -2,11 +2,24 @@
 #include <yak/event.h>
 #include <yak/ipl-guard.h>
 #include <yak/kobject.h>
+#include <yak/panic.h>
 
 namespace yak {
-Event::Event(bool initial_state, bool notif)
-    : KObject(initial_state ? 1 : 0,
-              notif ? KObjectType::Notify : KObjectType::Sync) {}
+namespace {
+KObjectType ev_type_to_obj(Event::Type type) {
+  switch (type) {
+  case Event::Type::Notify:
+    return KObjectType::Notify;
+  case Event::Type::Synch:
+    return KObjectType::Sync;
+  default:
+    panic("unknown event type");
+  }
+}
+} // namespace
+
+Event::Event(bool initial_state, Event::Type event_type)
+    : KObject(initial_state ? 1 : 0, ev_type_to_obj(event_type)) {}
 
 void Event::alarm(bool wake_all) {
   IplGuard ipl{Ipl::dispatch};

@@ -6,10 +6,15 @@
 namespace yak {
 
 class Event : public KObject {
-    public:
-    Event(bool initial_state, bool notify);
+public:
+  enum class Type {
+    Notify,
+    Synch,
+  };
 
-    void alarm(bool wake_all = false);
-    void clear();
+  Event(bool initial_state, Event::Type event_type);
+
+  void alarm(bool wake_all = false);
+  void clear();
 };
 } // namespace yak
