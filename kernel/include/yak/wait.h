@@ -23,11 +23,10 @@ enum class WaitType {
 
 static constexpr TimeNs POLL_ONCE = -1;
 
-std::expected<int, Status>
-wait_for_single(KObject &obj, WaitMode mode,
-                std::optional<TimeNs> timeout = std::nullopt);
+WaitResult wait_for_single(KObject &obj, WaitMode mode,
+                           std::optional<TimeNs> timeout = std::nullopt);
 
-std::expected<int, Status>
+WaitResult
 wait_for_many(std::span<KObject *> objects, WaitMode mode, WaitType type,
               std::optional<TimeNs> timeout = std::nullopt,
               std::optional<std::span<WaitBlock>> table_opt = std::nullopt);

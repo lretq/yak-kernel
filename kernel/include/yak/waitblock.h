@@ -1,6 +1,8 @@
 #pragma once
 
+#include <expected>
 #include <frg/list.hpp>
+#include <yak/status.h>
 #include <yak/types.h>
 
 namespace yak {
@@ -10,8 +12,10 @@ enum {
   WB_UNWAITED = 1 << 1,
 };
 
-struct Thread;
+class Thread;
 struct KObject;
+
+using WaitResult = std::expected<int, Status>;
 
 struct WaitBlock {
   constexpr WaitBlock() = default;
@@ -21,10 +25,10 @@ struct WaitBlock {
   WaitBlock(WaitBlock &&) = delete;
   WaitBlock &operator=(WaitBlock &&) = delete;
 
-  Thread *thread_;   /* thread waiting */
-  KObject *object_;  /* object being waited on */
-  OptionBits flags_; /* internal flags */
-  int wake_status_;  /* status passed to Thread::unwait() */
+  Thread *thread_;         /* thread waiting */
+  KObject *object_;        /* object being waited on */
+  OptionBits flags_;       /* internal flags */
+  WaitResult wake_status_; /* status passed to Thread::unwait() */
   frg::default_list_hook<WaitBlock> hook_; /* linkage for object list*/
 };
 

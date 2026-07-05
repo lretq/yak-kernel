@@ -1,11 +1,13 @@
 #pragma once
 
 #include <frg/list.hpp>
+#include <frg/mutex.hpp>
 #include <frg/string.hpp>
 #include <span>
 #include <yak/arch-pcb.h>
 #include <yak/sched_prio.h>
 #include <yak/spinlock.h>
+#include <yak/wait.h>
 #include <yak/waitblock.h>
 
 namespace yak {
@@ -49,12 +51,62 @@ static constexpr size_t THREAD_INLINE_WAIT_BLOCKS = 4;
 
 using ThreadEntryFn = void (*)(void *, void *);
 
-struct Thread {
+extern "C" void sched_finalize_switch(Thread *current, Thread *next);
+
+class Thread {
+  friend class Scheduler;
+  friend WaitResult
+  wait_for_impl(std::span<KObject *> objects, WaitMode mode, WaitType type,
+                std::optional<TimeNs> timeout,
+                std::optional<std::span<WaitBlock>> table_opt);
+  friend void sched_finalize_switch(Thread *current, Thread *next);
+
+public:
+  enum class Type {
+    KernelThread,
+    UserThread,
+    IdleThread,
+  };
+
+  static Thread *current();
+
+  [[noreturn]]
+  static void exit_current();
+
+  Thread(frg::string_view name, SchedPrio initial_priority,
+         Process *parent_process, Type thread_type = Type::KernelThread);
+
+  void init_context(void *kstack_top, ThreadEntryFn entry, void *ctx1,
+                    void *ctx2);
+
+  void unwait(WaitResult res);
+
+  bool is_kernel() const {
+    return thread_type_ != Thread::Type::KernelThread;
+  }
+
+  bool is_user() const {
+    return thread_type_ == Thread::Type::UserThread;
+  }
+
+  bool is_idle() const {
+    return thread_type_ == Thread::Type::IdleThread;
+  }
+
+  auto lock_guard() {
+    return frg::guard(&lock_);
+  }
+
+public:
   arch::ThreadPcb md;
 
+private:
   Spinlock lock_;
 
+public:
   ThreadState state_;
+
+  SchedPrio base_priority_;
   SchedPrio priority_;
 
   Process *parent_process_;
@@ -67,36 +119,20 @@ struct Thread {
 
   std::atomic<bool> is_switching_;
 
-  bool is_user_;
-
   char name_[THREAD_MAX_NAME_LEN];
 
   WaitBlock inline_waitblocks_[THREAD_INLINE_WAIT_BLOCKS];
   WaitBlock timeout_waitblock_;
 
   WaitPhase wait_phase_;
-  /// if negative, wait_status is an error of kind -Status
-  /// if positive, wait_status was set to the waitblocks status field
-  int wait_status_;
+  WaitResult wait_status_;
   std::span<WaitBlock> wait_blocks_;
 
   frg::default_list_hook<Thread> list_hook;
   frg::default_list_hook<Thread> queue_hook;
 
-  Thread(frg::string_view name, SchedPrio initial_priority,
-         Process *parent_process, bool user_thread);
-
-  static Thread *Current();
-
-  void init_context(void *kstack_top, ThreadEntryFn entry, void *ctx1,
-                    void *ctx2);
-
-  [[noreturn]]
-  void exit();
-
-  void unwait(int wait_status);
-
-  bool is_idle();
+private:
+  const Type thread_type_;
 };
 
 using ThreadList = frg::intrusive_list<

@@ -16,12 +16,6 @@
 
 namespace yak {
 
-std::expected<int, Status> decode_wait_status(int raw) {
-  if (raw < 0)
-    return std::unexpected{static_cast<Status>(-raw)};
-  return raw;
-}
-
 static void maybe_acquire(KObject &obj) {
   if (obj.type_ == KObjectType::Sync)
     obj.signal_count_--;
@@ -109,7 +103,7 @@ static std::expected<int, Status> poll_many(std::span<KObject *> objects,
   return std::unexpected{YAK_TIMEOUT};
 }
 
-static std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
+std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
   // the idle thread must not wait!
   assert(!thread.is_idle());
 
@@ -117,7 +111,7 @@ static std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
   thread.state_ = ThreadState::Blocked;
 
   CpuData::local_scheduler().yield(&thread);
-  // unlocks thread
+  // yield() unlocks thread
   assert(iplget() == Ipl::dispatch);
 
   for (auto &wb : thread.wait_blocks_)
@@ -131,96 +125,31 @@ static std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
     panic("uninstall");
   }
 
-  auto tguard = frg::guard(&thread.lock_);
+  auto guard = thread.lock_guard();
   thread.wait_phase_ = WaitPhase::None;
 
-  return decode_wait_status(thread.wait_status_);
+  return thread.wait_status_;
 }
 
-std::expected<int, Status> wait_for_single(KObject &obj, WaitMode mode,
-                                           std::optional<TimeNs> timeout) {
-  if (mode == WaitMode::Poll)
-    return poll_single(obj, timeout).transform([]() -> int { return 0; });
-
-  const bool has_timeout = timeout.has_value();
-  auto &thread = *Thread::Current();
-
-  auto &wb = thread.inline_waitblocks_[0];
-  wb.thread_ = &thread;
-  wb.object_ = &obj;
-  wb.flags_ = 0;
-  wb.wake_status_ = 0;
-
-  IplGuard ipl{Ipl::dispatch};
-
-  {
-    auto guard = frg::guard(&thread.lock_);
-    thread.wait_phase_ = WaitPhase::InProgress;
-    thread.timeout_waitblock_.flags_ = 0;
-    thread.wait_blocks_ = std::span<WaitBlock>(&wb, 1);
-  }
-
-  {
-    auto guard = frg::guard(&obj.lock_);
-    if (obj.is_signaled()) {
-      maybe_acquire(obj);
-
-      {
-        auto tguard = frg::guard(&thread.lock_);
-        thread.wait_phase_ = WaitPhase::None;
-      }
-
-      return 0;
-    }
-
-    obj.wait_list_.push_back(&wb);
-    obj.wait_count_++;
-  }
-
-  if (has_timeout)
-    set_timeout(thread, *timeout);
-
-  thread.lock_.lock();
-
-  // If our thread's wait was aborted, that means we DONT have to
-  // decrement the signal count anymore!
-
-  // dequeue the wait block
-  if (thread.wait_phase_ == WaitPhase::Aborted) {
-    int wait_status = thread.wait_status_;
-
-    thread.lock_.unlock();
-
-    if (has_timeout) {
-      // thread.timeout_timer_.uninstall();
-      wb_dequeue(thread.timeout_waitblock_);
-    }
-
-    wb_dequeue(wb);
-
-    auto tguard = frg::guard(&thread.lock_);
-    thread.wait_phase_ = WaitPhase::None;
-
-    return decode_wait_status(wait_status);
-  }
-
-  // do_wait takes the lock ownership for thread.lock_ here.
-  // the IplGuard will lower the ipl here, too.
-  return do_wait(thread, has_timeout);
-}
-
-std::expected<int, Status>
-wait_for_many(std::span<KObject *> objects, WaitMode mode, WaitType type,
-              std::optional<TimeNs> timeout,
-              std::optional<std::span<WaitBlock>> table_opt) {
+WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
+                         WaitType type, std::optional<TimeNs> timeout,
+                         std::optional<std::span<WaitBlock>> table_opt) {
   assert(!objects.empty());
 
-  if (mode == WaitMode::Poll)
-    return poll_many(objects, timeout);
+  // Handle poll mode
+  if (mode == WaitMode::Poll) {
+    if (objects.size() == 1)
+      return poll_single(*objects[0], timeout).transform([]() -> int {
+        return 0;
+      });
+    else
+      return poll_many(objects, timeout);
+  }
 
   const bool has_timeout = timeout.has_value();
-  auto &thread = *Thread::Current();
+  auto &thread = *Thread::current();
 
+  // Set up wait blocks
   std::span<WaitBlock> table;
   if (table_opt.has_value()) {
     table = *table_opt;
@@ -230,7 +159,6 @@ wait_for_many(std::span<KObject *> objects, WaitMode mode, WaitType type,
   }
 
   assert(table.size() >= objects.size());
-
   table = table.first(objects.size());
 
   for (auto [i, wb] : table | std::views::enumerate) {
@@ -243,36 +171,36 @@ wait_for_many(std::span<KObject *> objects, WaitMode mode, WaitType type,
   IplGuard ipl{Ipl::dispatch};
 
   {
-    auto guard = frg::guard(&thread.lock_);
+    auto guard = thread.lock_guard();
     thread.wait_phase_ = WaitPhase::InProgress;
     thread.timeout_waitblock_.flags_ = 0;
     thread.wait_blocks_ = table;
   }
 
-  if (type == WaitType::Any) {
-    for (auto [i, obj] : objects | std::views::enumerate) {
-      auto guard = frg::guard(&obj->lock_);
-      if (obj->is_signaled()) {
-        maybe_acquire(*obj);
+  // Check signaled and enqueue
+  for (auto [i, obj] : objects | std::views::enumerate) {
+    auto guard = frg::guard(&obj->lock_);
+    if (obj->is_signaled()) {
+      maybe_acquire(*obj);
+      guard.unlock();
 
-        guard.unlock();
+      // Clean up already enqueued wait blocks
+      for (auto &wb : table.first(i))
+        wb_dequeue(wb);
 
-        // Clean up the already enqueued wait blocks
-        for (auto &wb : table.first(i))
-          wb_dequeue(wb);
-
-        {
-          auto tguard = frg::guard(&thread.lock_);
-          thread.wait_phase_ = WaitPhase::None;
-        }
-
-        return i;
-      } else {
-        obj->wait_list_.push_back(&table[i]);
-        obj->wait_count_++;
+      {
+        auto tguard = thread.lock_guard();
+        thread.wait_phase_ = WaitPhase::None;
       }
+
+      return i;
+    } else {
+      obj->wait_list_.push_back(&table[i]);
+      obj->wait_count_++;
     }
-  } else {
+  }
+
+  if (type == WaitType::All) {
     panic("WaitType::All not implemented!");
   }
 
@@ -281,27 +209,39 @@ wait_for_many(std::span<KObject *> objects, WaitMode mode, WaitType type,
 
   thread.lock_.lock();
 
+  // Handle abort
   if (thread.wait_phase_ == WaitPhase::Aborted) {
-    int wait_status = thread.wait_status_;
-
+    auto wait_status = thread.wait_status_;
     thread.lock_.unlock();
 
     if (has_timeout) {
-      // thread.timeout_timer_.uninstall();
       wb_dequeue(thread.timeout_waitblock_);
     }
 
     for (auto &wb : table)
       wb_dequeue(wb);
 
-    thread.wait_phase_ = WaitPhase::None;
+    {
+      auto guard = thread.lock_guard();
+      thread.wait_phase_ = WaitPhase::None;
+    }
 
-    return decode_wait_status(wait_status);
+    return wait_status;
   }
 
-  // do_wait takes the lock ownership for thread.lock_ here.
-  // the IplGuard will lower the ipl here, too.
   return do_wait(thread, has_timeout);
+}
+
+WaitResult wait_for_single(KObject &obj, WaitMode mode,
+                           std::optional<TimeNs> timeout) {
+  KObject *objs[] = {&obj};
+  return wait_for_impl(objs, mode, WaitType::Any, timeout, std::nullopt);
+}
+
+WaitResult wait_for_many(std::span<KObject *> objects, WaitMode mode,
+                         WaitType type, std::optional<TimeNs> timeout,
+                         std::optional<std::span<WaitBlock>> table_opt) {
+  return wait_for_impl(objects, mode, type, timeout, table_opt);
 }
 
 } // namespace yak

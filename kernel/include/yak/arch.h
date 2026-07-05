@@ -1,7 +1,7 @@
 #pragma once
 
 namespace yak {
-struct Thread;
+class Thread;
 }
 
 namespace yak::arch {

@@ -25,18 +25,18 @@ void Thread::init_context(void *kstack_top, ThreadEntryFn entry, void *ctx1,
   md.r13 = reinterpret_cast<uintptr_t>(ctx1);
   md.r14 = reinterpret_cast<uintptr_t>(ctx2);
 
-  if (is_user_) {
+  if (is_user()) {
     panic("FPU alloc");
   }
 }
 
 namespace arch {
 void sched_switch(Thread *current, Thread *thread) {
-  if (current->is_user_) {
+  if (current->is_user()) {
     panic("FPU save");
   }
 
-  if (thread->is_user_) {
+  if (thread->is_user()) {
     panic("tss, fpu -> user setup");
   }
 

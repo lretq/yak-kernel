@@ -23,4 +23,14 @@ void CpuData::initialize(CpuData *data) {
 
   data->md.md_init();
 }
+
+void CpuData::bootstrap_scheduler(Thread *idle_thread) {
+  idle_thread->state_ = ThreadState::Running;
+
+  current_thread = idle_thread;
+  kernel_stack_top = idle_thread->kernel_stack_top_;
+
+  sched.initialize(this, idle_thread);
+}
+
 } // namespace yak

@@ -1,5 +1,5 @@
-#include <yak/assert.h>
 #include <frg/mutex.hpp>
+#include <yak/assert.h>
 #include <yak/kobject.h>
 #include <yak/panic.h>
 #include <yak/thread.h>
@@ -18,7 +18,7 @@ int KObject::signal_locked(bool unblock_all) {
 
     auto *thread = wb->thread_;
 
-    auto guard = frg::guard(&thread->lock_);
+    auto guard = thread->lock_guard();
 
     wb->flags_ |= WB_DEQUEUED;
     wait_list_.pop_front();

@@ -42,6 +42,8 @@ struct CpuData {
   static inline Scheduler &local_scheduler() {
     return *Current()->sched.get();
   }
+
+  void bootstrap_scheduler(Thread *idle_thread);
 };
 
 } // namespace yak

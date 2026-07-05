@@ -40,16 +40,9 @@ will follow later on :^)
 #endif
 
 namespace yak {
-void Scheduler::init(CpuData *cpu, Thread *idle_thread) {
-  idle_thread->state_ = ThreadState::Running;
-  cpu->current_thread = idle_thread;
-  cpu->kernel_stack_top = idle_thread->kernel_stack_top_;
-
-  cpu->sched.initialize(cpu, idle_thread);
-
-  auto sched = cpu->sched.get();
-  sched->idle_thread_ = idle_thread;
-}
+Scheduler::Scheduler(CpuData *cpu, Thread *idle_thread)
+    : sched_cpu_(cpu),
+      idle_thread_(idle_thread) {}
 
 // Both scheduler and thread shall be locked upon entry
 void Scheduler::insert(Thread *thread, bool remote) {
@@ -130,8 +123,8 @@ Thread *Scheduler::select_next(SchedPrio min_priority) {
 }
 
 void Scheduler::resume_locked(Thread *thread) {
-  assert(thread->lock_.is_locked());
   assert(iplget() == Ipl::dispatch);
+  assert(thread->lock_.is_locked());
 
   auto cpu = thread->affinity_cpu_;
   if (cpu == nullptr) {
@@ -144,7 +137,7 @@ void Scheduler::resume_locked(Thread *thread) {
 
 void Scheduler::resume(Thread *thread) {
   IplGuard ipl{Ipl::dispatch};
-  auto guard = frg::guard(&thread->lock_);
+  auto guard = thread->lock_guard();
   resume_locked(thread);
 }
 
@@ -161,7 +154,7 @@ void sched_finalize_switch(Thread *current, Thread *next) {
 }
 
 [[gnu::no_instrument_function]]
-static void do_switch(Thread *current, Thread *thread) {
+void Scheduler::do_switch(Thread *current, Thread *thread) {
   assert(iplget() == Ipl::dispatch);
   assert(current && thread);
   assert(current != thread);
@@ -176,7 +169,7 @@ static void do_switch(Thread *current, Thread *thread) {
 
   current->affinity_cpu_ = CpuData::Current();
 
-  if (thread->is_user_) {
+  if (thread->is_user()) {
     if (current->effective_process_ != thread->effective_process_) {
       panic("activate other user thread process map");
     }
@@ -202,6 +195,7 @@ void Scheduler::commit_reschedule() {
     return;
   }
 
+  // no going back now
   next_thread_ = nullptr;
   next->state_ = ThreadState::Switching;
 
@@ -219,7 +213,7 @@ void Scheduler::commit_reschedule() {
     auto sguard = frg::guard(&lock_);
     insert(current, false);
   } else {
-    // the idle thread remains in a ready state
+    // the idle thread always remains in a ready state
     current->state_ = ThreadState::Queued;
   }
 
@@ -253,29 +247,4 @@ void Scheduler::yield(Thread *current) {
     do_switch(current, idle_thread_);
   }
 }
-
-#if !YAK_HOSTED_MODE
-[[noreturn]]
-void Scheduler::idle_loop() {
-  iplx(Ipl::passive);
-
-  while (true) {
-    assert(iplget() == Ipl::passive);
-
-    pr_debug("core %zu is idle!\n", CPUDATA_LOAD(id));
-
-    arch::enable_interrupts();
-
-#if defined x86_64
-    // TODO: implement monitor/mwait, proper idle driver?
-    arch::interrupt_wait();
-#elif defined riscv64
-    arch::interrupt_wait();
-#else
-#error "Port idle_loop to this architecture!"
-#endif
-  }
-}
-#endif
-
 } // namespace yak

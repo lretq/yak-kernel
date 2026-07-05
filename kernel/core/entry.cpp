@@ -1,7 +1,3 @@
-#include "yak/kobject.h"
-#include "yak/util.h"
-#include "yak/vm/direct.h"
-#include "yak/wait.h"
 #include <cstddef>
 #include <span>
 #include <yak/arch.h>
@@ -10,16 +6,20 @@
 #include <yak/event.h>
 #include <yak/idle.h>
 #include <yak/init.h>
+#include <yak/kobject.h>
 #include <yak/log.h>
 #include <yak/math.h>
 #include <yak/percpu.h>
 #include <yak/ps.h>
 #include <yak/sched.h>
 #include <yak/thread.h>
+#include <yak/util.h>
 #include <yak/version.h>
+#include <yak/vm/direct.h>
 #include <yak/vm/memblock.h>
 #include <yak/vm/page.h>
 #include <yak/vm/pmm.h>
+#include <yak/wait.h>
 
 namespace yak {
 
@@ -53,8 +53,8 @@ bool is_canonical(uintptr_t addr);
 
 extern void test_fn();
 
-Thread bsp_idle_thread =
-    Thread("idle_thread0", SchedPrio::Idle, &kernel_process, false);
+Thread bsp_idle_thread = Thread("idle_thread0", SchedPrio::Idle,
+                                &kernel_process, Thread::Type::IdleThread);
 
 extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   arch::early_output_init();
@@ -77,7 +77,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   arch::early_init();
 
   bsp_idle_thread.kernel_stack_top_ = bsp_idle_stack_top;
-  Scheduler::init(&bsp_cpu_data, &bsp_idle_thread);
+  bsp_cpu_data.bootstrap_scheduler(&bsp_idle_thread);
 
   // We now have defined thread-state;
   // Sleeping locks are usable.
@@ -99,8 +99,8 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   auto pg_stack_win2 =
       expect(MapWindow::create(pg_stack2->to_pa(), 4096), "could not map");
 
-  auto t1 = Thread("test1", SchedPrio::RealTime, &kernel_process, false);
-  auto t2 = Thread("test2", SchedPrio::RealTime, &kernel_process, false);
+  auto t1 = Thread("test1", SchedPrio::RealTime, &kernel_process);
+  auto t2 = Thread("test2", SchedPrio::RealTime, &kernel_process);
 
   t1.init_context((void *) ((vaddr_t) pg_stack_win1.data() + 4096),
                   [](void *obj, void *n) {
