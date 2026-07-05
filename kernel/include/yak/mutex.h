@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <yak/event.h>
+#include <yak/thread.h>
+
 namespace yak {
 
 class Mutex {
@@ -16,6 +20,9 @@ public:
   bool try_lock();
 
 private:
+  Event mutex_wake_;
+  Spinlock lock_;
+  Thread *owner;
 };
 
 } // namespace yak

@@ -26,6 +26,7 @@ void CpuData::initialize(CpuData *data) {
 
 void CpuData::bootstrap_scheduler(Thread *idle_thread) {
   idle_thread->state = ThreadState::Running;
+  idle_thread->current_cpu = this;
 
   current_thread = idle_thread;
   kernel_stack_top = idle_thread->kernel_stack_top;

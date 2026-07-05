@@ -13,4 +13,5 @@ yak_add_sources(
 	kobject.cpp
 	event.cpp
 	idle.cpp
+	mutex.cpp
 )

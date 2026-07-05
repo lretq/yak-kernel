@@ -2,10 +2,12 @@
 #include <string.h>
 #include <yak/assert.h>
 #include <yak/cpudata.h>
+#include <yak/ipl-guard.h>
 #include <yak/ipl.h>
 #include <yak/log.h>
 #include <yak/panic.h>
 #include <yak/sched.h>
+#include <yak/softint.h>
 #include <yak/thread.h>
 #include <yak/waitblock.h>
 
@@ -13,7 +15,7 @@ namespace yak {
 Thread::Thread(frg::string_view thread_name, SchedPrio initial_priority,
                Process *parent_process, Thread::Type thread_type)
     : state{ThreadState::Undefined},
-      base_priority{initial_priority},
+      stashed_priority{initial_priority},
       priority{initial_priority},
       parent_process{parent_process},
       effective_process{parent_process},
@@ -71,6 +73,68 @@ void Thread::unwait(WaitResult res) {
   // Unblock the thread
   if (state == ThreadState::Blocked)
     CpuData::local_scheduler().resume_locked(this);
+}
+
+void Thread::set_priority_locked(SchedPrio new_priority) {
+  assert(lock_.is_locked());
+
+  auto sched = current_cpu->sched;
+  auto sguard = frg::guard(&sched->lock_);
+
+  auto current_priority = priority;
+
+  if (current_priority == new_priority)
+    return;
+
+  priority = new_priority;
+
+  bool remote = sched.get() == CpuData::current()->sched.get();
+
+  if (state == ThreadState::Queued) {
+    // Reinsert if already queued
+    sched->reinsert(this, current_priority, remote);
+    return;
+  }
+
+  if (priority < current_priority) {
+    Thread *next;
+
+    if (this->state == ThreadState::WaitingForSwitch) {
+      next = sched->select_next(priority);
+
+      if (!next) {
+        return;
+      }
+
+      // A higher-priority thread is available
+      sched->next_thread_ = next;
+      sched->insert(this, remote);
+    }
+
+    if (this->state == ThreadState::Running) {
+      if (sched->next_thread_)
+        return;
+
+      next = sched->select_next(priority);
+      if (!next) {
+        return;
+      }
+
+      sched->next_thread_ = next;
+
+      if (remote) {
+        softint_issue_other(sched.get()->sched_cpu_, Ipl::dispatch);
+      } else {
+        softint_issue(Ipl::dispatch);
+      }
+    }
+  };
+}
+
+void Thread::set_priority(SchedPrio new_priority) {
+  IplGuard ipl{Ipl::dispatch};
+  auto guard = lock_guard();
+  set_priority_locked(new_priority);
 }
 
 } // namespace yak

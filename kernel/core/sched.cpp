@@ -44,10 +44,20 @@ Scheduler::Scheduler(CpuData *cpu, Thread *idle_thread)
     : sched_cpu_(cpu),
       idle_thread_(idle_thread) {}
 
+void Scheduler::reinsert(Thread *thread, SchedPrio cur_prio, bool remote) {
+  assert(thread->state == ThreadState::Queued);
+  if (cur_prio == SchedPrio::Idle) {
+    idle_queue_.erase(idle_queue_.iterator_to(thread));
+  } else {
+    rr_queue_.remove(thread);
+  }
+  insert(thread, remote);
+}
+
 // Both scheduler and thread shall be locked upon entry
 void Scheduler::insert(Thread *thread, bool remote) {
   while (true) {
-    thread->last_cpu = sched_cpu_;
+    thread->current_cpu = sched_cpu_;
     thread->state = ThreadState::Queued;
 
     auto current = next_thread_ ? next_thread_ : sched_cpu_->current_thread;
@@ -128,11 +138,11 @@ void Scheduler::resume_locked(Thread *thread) {
 
   auto cpu = thread->affinity_cpu;
   if (cpu == nullptr) {
-    cpu = CpuData::Current();
+    cpu = CpuData::current();
   }
 
   auto guard = frg::guard(&lock_);
-  insert(thread, cpu != CpuData::Current());
+  insert(thread, cpu != CpuData::current());
 }
 
 void Scheduler::resume(Thread *thread) {
@@ -167,7 +177,7 @@ void Scheduler::do_switch(Thread *current, Thread *thread) {
          thread->state != ThreadState::Undefined ||
          current->state != ThreadState::Blocked);
 
-  current->affinity_cpu = CpuData::Current();
+  current->affinity_cpu = CpuData::current();
 
   if (thread->is_user()) {
     if (current->effective_process != thread->effective_process) {

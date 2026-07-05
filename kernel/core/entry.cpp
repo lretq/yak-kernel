@@ -1,3 +1,5 @@
+#include "yak/ipl-guard.h"
+#include "yak/sched_prio.h"
 #include <cstddef>
 #include <span>
 #include <yak/arch.h>
@@ -9,6 +11,7 @@
 #include <yak/kobject.h>
 #include <yak/log.h>
 #include <yak/math.h>
+#include <yak/mutex.h>
 #include <yak/percpu.h>
 #include <yak/ps.h>
 #include <yak/sched.h>
@@ -104,6 +107,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
 
   t1.init_context((void *) ((vaddr_t) pg_stack_win1.data() + 4096),
                   [](void *obj, void *n) {
+                    Thread::current()->set_priority(SchedPrio::RealTime + 2);
                     pr_debug("enter t@%zu! (%p)\n", (uint64_t) n, obj);
                     auto &o = *(Event *) obj;
                     KObject *objs[] = {&o};
@@ -117,6 +121,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
 
   t2.init_context((void *) ((vaddr_t) pg_stack_win2.data() + 4096),
                   [](void *obj, void *n) {
+                    Thread::current()->set_priority(SchedPrio::RealTime + 1);
                     pr_debug("enter t@%zu! (%p)\n", (uint64_t) n, obj);
                     auto &o = *(Event *) obj;
                     auto res = wait_for_single(o, WaitMode::Block);
@@ -126,12 +131,15 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
                   },
                   &ev, (void *) 2);
 
+  pr_debug("begin resumes\n");
+
   CpuData::local_scheduler().resume(&t1);
   CpuData::local_scheduler().resume(&t2);
 
   pr_debug("run next\n");
 
   ev.alarm();
+  ev.clear();
 
   // XXX: rather run this on the kmain thread!
   init_engine.run();

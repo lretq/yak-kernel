@@ -18,7 +18,7 @@ void Dpc::init(DpcCallback callback) {
 void DpcQueue::enqueue(Dpc *dpc, void *context) {
   InterruptGuard ints{};
 
-  auto dpc_queue = CpuData::Current()->dpc_queue.get();
+  auto dpc_queue = CpuData::current()->dpc_queue.get();
   auto guard = frg::guard(&dpc_queue->queue_lock);
 
   // already enqueued

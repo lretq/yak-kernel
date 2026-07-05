@@ -97,18 +97,21 @@ public:
     return frg::guard(&lock_);
   }
 
+  void set_priority_locked(SchedPrio new_priority);
+  void set_priority(SchedPrio new_priority);
+
 public:
   arch::ThreadPcb md;
   ThreadState state;
 
-  SchedPrio base_priority;
+  SchedPrio stashed_priority;
   SchedPrio priority;
 
   Process *parent_process;
   Process *effective_process;
 
   CpuData *affinity_cpu = nullptr;
-  CpuData *last_cpu = nullptr;
+  CpuData *current_cpu = nullptr;
 
   void *kernel_stack_top = nullptr;
 
@@ -122,6 +125,8 @@ public:
   WaitPhase wait_phase;
   WaitResult wait_status;
   std::span<WaitBlock> wait_blocks;
+
+  size_t locks_held;
 
   frg::default_list_hook<Thread> list_hook;
   frg::default_list_hook<Thread> queue_hook;

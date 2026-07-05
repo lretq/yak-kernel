@@ -19,6 +19,14 @@ constexpr bool operator==(SchedPrio a, SchedPrio b) noexcept {
   return std::to_underlying(a) == std::to_underlying(b);
 }
 
+constexpr SchedPrio operator+(SchedPrio lhs, unsigned int rhs) {
+  return static_cast<SchedPrio>(std::to_underlying(lhs) + rhs);
+}
+
+constexpr SchedPrio operator+(unsigned int lhs, SchedPrio rhs) {
+  return rhs + lhs;
+}
+
 namespace sched_prio {
 inline constexpr unsigned int PRIO_COUNT = 64;
 inline constexpr unsigned int TIME_SHARE_END = 31;

@@ -41,7 +41,7 @@ constinit std::array<SoftintHandler, std::to_underlying(Ipl::high) - 1>
 void softint_dispatch(Ipl ipl) {
   InterruptGuard ints{};
 
-  auto cpu = CpuData::Current();
+  auto cpu = CpuData::current();
   uint32_t pending;
 
   while ((pending = cpu->softints_pending.load(std::memory_order_acquire)) &
@@ -50,14 +50,14 @@ void softint_dispatch(Ipl ipl) {
     int idx = 31 - __builtin_clz(masked);
     assert(handlers[idx] != nullptr);
     handlers[idx](cpu);
-    cpu = CpuData::Current();
+    cpu = CpuData::current();
   }
 
   iplx(ipl);
 }
 
 void softint_issue(Ipl ipl) {
-  CpuData::Current()->softints_pending.fetch_or(pending_for(ipl),
+  CpuData::current()->softints_pending.fetch_or(pending_for(ipl),
                                                 std::memory_order_release);
 }
 

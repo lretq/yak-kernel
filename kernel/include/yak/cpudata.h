@@ -31,16 +31,16 @@ struct CpuData {
 
   static void initialize(CpuData *data);
 
-  static inline CpuData *Current() {
+  static inline CpuData *current() {
     return CPUDATA_LOAD(self);
   }
 
-  static inline bool OnBsp() {
+  static inline bool on_bsp() {
     return CPUDATA_LOAD(bsp);
   }
 
   static inline Scheduler &local_scheduler() {
-    return *Current()->sched.get();
+    return *current()->sched.get();
   }
 
   void bootstrap_scheduler(Thread *idle_thread);
