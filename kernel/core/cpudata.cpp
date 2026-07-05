@@ -25,10 +25,10 @@ void CpuData::initialize(CpuData *data) {
 }
 
 void CpuData::bootstrap_scheduler(Thread *idle_thread) {
-  idle_thread->state_ = ThreadState::Running;
+  idle_thread->state = ThreadState::Running;
 
   current_thread = idle_thread;
-  kernel_stack_top = idle_thread->kernel_stack_top_;
+  kernel_stack_top = idle_thread->kernel_stack_top;
 
   sched.initialize(this, idle_thread);
 }

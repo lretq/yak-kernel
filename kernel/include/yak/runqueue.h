@@ -26,7 +26,7 @@ struct RunQueue {
   }
 
   inline void insert(Thread *thread) {
-    auto prio = std::to_underlying(thread->priority_);
+    auto prio = std::to_underlying(thread->priority);
     assert(prio < sched_prio::PRIO_COUNT && "priority out of range");
     assert(prio < 64 && "priority exceeds ready_mask bit width");
     auto &queue = queues[prio];
@@ -36,7 +36,7 @@ struct RunQueue {
   }
 
   inline void remove(Thread *thread) {
-    auto prio = std::to_underlying(thread->priority_);
+    auto prio = std::to_underlying(thread->priority);
     assert(prio < sched_prio::PRIO_COUNT && "priority out of range");
     assert(prio < 64 && "priority exceeds ready_mask bit width");
     assert(!queues[prio].empty() && "removing from empty priority queue");

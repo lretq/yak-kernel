@@ -10,17 +10,18 @@
 #include <yak/waitblock.h>
 
 namespace yak {
-Thread::Thread(frg::string_view name, SchedPrio initial_priority,
+Thread::Thread(frg::string_view thread_name, SchedPrio initial_priority,
                Process *parent_process, Thread::Type thread_type)
-    : state_{ThreadState::Undefined},
-      base_priority_{initial_priority},
-      priority_{base_priority_},
-      parent_process_{parent_process},
-      effective_process_{parent_process},
-      wait_phase_{WaitPhase::None},
+    : state{ThreadState::Undefined},
+      base_priority{initial_priority},
+      priority{initial_priority},
+      parent_process{parent_process},
+      effective_process{parent_process},
+      wait_phase{WaitPhase::None},
       thread_type_{thread_type} {
-  auto name_copy_len = std::min(name.size(), THREAD_MAX_NAME_LEN - 1);
-  memcpy(name_, name.data(), name_copy_len);
+  auto name_copy_len = std::min(thread_name.size(), THREAD_MAX_NAME_LEN - 1);
+  memcpy(name, thread_name.data(), name_copy_len);
+  name[THREAD_MAX_NAME_LEN - 1] = '\0';
 }
 
 Thread *Thread::current() {
@@ -39,9 +40,9 @@ void Thread::exit_current() {
 
   current->lock_.lock();
 
-  pr_warn("add a thread reaper!\n");
+  pr_warn("add a thread reaper! Thread <%s> exited!\n", current->name);
 
-  current->state_ = ThreadState::Terminating;
+  current->state = ThreadState::Terminating;
 
   CpuData::local_scheduler().yield(current);
   __builtin_unreachable();
@@ -53,23 +54,22 @@ extern "C" [[noreturn]] void __thread_exit_trampoline() {
 
 void Thread::unwait(WaitResult res) {
   assert(lock_.is_locked());
-  assert(state_ == ThreadState::Blocked ||
-         wait_phase_ == WaitPhase::InProgress);
+  assert(state == ThreadState::Blocked || wait_phase == WaitPhase::InProgress);
 
   // If we did not commit to the wait yet, abort
-  if (wait_phase_ == WaitPhase::InProgress)
-    wait_phase_ = WaitPhase::Aborted;
+  if (wait_phase == WaitPhase::InProgress)
+    wait_phase = WaitPhase::Aborted;
 
-  wait_status_ = res;
+  wait_status = res;
 
   // Set all wait blocks to unwaited
-  for (auto &wb : wait_blocks_)
+  for (auto &wb : wait_blocks)
     wb.flags_ |= WB_UNWAITED;
 
-  timeout_waitblock_.flags_ |= WB_UNWAITED;
+  timeout_waitblock.flags_ |= WB_UNWAITED;
 
   // Unblock the thread
-  if (state_ == ThreadState::Blocked)
+  if (state == ThreadState::Blocked)
     CpuData::local_scheduler().resume_locked(this);
 }
 

@@ -13,7 +13,7 @@ void __x86_sched_trampoline();
 
 void Thread::init_context(void *kstack_top, ThreadEntryFn entry, void *ctx1,
                           void *ctx2) {
-  kernel_stack_top_ = kstack_top;
+  kernel_stack_top = kstack_top;
 
   uint64_t *sp = reinterpret_cast<uint64_t *>(kstack_top);
 

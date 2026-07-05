@@ -47,13 +47,13 @@ Scheduler::Scheduler(CpuData *cpu, Thread *idle_thread)
 // Both scheduler and thread shall be locked upon entry
 void Scheduler::insert(Thread *thread, bool remote) {
   while (true) {
-    thread->last_cpu_ = sched_cpu_;
-    thread->state_ = ThreadState::Queued;
+    thread->last_cpu = sched_cpu_;
+    thread->state = ThreadState::Queued;
 
     auto current = next_thread_ ? next_thread_ : sched_cpu_->current_thread;
 
-    if (sched_prio::is_real_time(thread->priority_)) {
-      if (thread->priority_ <= current->priority_) {
+    if (sched_prio::is_real_time(thread->priority)) {
+      if (thread->priority <= current->priority) {
         // thread's priority is not high enough to preempt
         rr_queue_.insert(thread);
         return;
@@ -62,11 +62,11 @@ void Scheduler::insert(Thread *thread, bool remote) {
       // Check if current is either
       // 1) the idle thread
       // 2) a thread of the Idle class
-      bool can_preempt = (current->priority_ == SchedPrio::Idle &&
-                          thread->priority_ > SchedPrio::Idle);
+      bool can_preempt = (current->priority == SchedPrio::Idle &&
+                          thread->priority > SchedPrio::Idle);
       if (!can_preempt) {
         // Anything not real time prio cannot preempt anything
-        if (sched_prio::is_time_share(thread->priority_)) {
+        if (sched_prio::is_time_share(thread->priority)) {
           // TODO: advanced insertion stuff
           // do not starve the time share threads completely and so on
           rr_queue_.insert(thread);
@@ -80,7 +80,7 @@ void Scheduler::insert(Thread *thread, bool remote) {
 
     // We can preempt the currently running thread!
 
-    thread->state_ = ThreadState::WaitingForSwitch;
+    thread->state = ThreadState::WaitingForSwitch;
 
     // nullptr if none
     auto evicted = next_thread_;
@@ -126,7 +126,7 @@ void Scheduler::resume_locked(Thread *thread) {
   assert(iplget() == Ipl::dispatch);
   assert(thread->lock_.is_locked());
 
-  auto cpu = thread->affinity_cpu_;
+  auto cpu = thread->affinity_cpu;
   if (cpu == nullptr) {
     cpu = CpuData::Current();
   }
@@ -142,15 +142,15 @@ void Scheduler::resume(Thread *thread) {
 }
 
 static inline void wait_for_switch(Thread *thread) {
-  while (thread->is_switching_.load(std::memory_order_acquire))
+  while (thread->is_switching.load(std::memory_order_acquire))
     busyloop_hint();
 }
 
 extern "C" [[gnu::no_instrument_function]]
 void sched_finalize_switch(Thread *current, Thread *next) {
-  current->is_switching_.store(false, std::memory_order_release);
+  current->is_switching.store(false, std::memory_order_release);
   current->lock_.unlock();
-  next->state_ = ThreadState::Running;
+  next->state = ThreadState::Running;
 }
 
 [[gnu::no_instrument_function]]
@@ -163,26 +163,26 @@ void Scheduler::do_switch(Thread *current, Thread *thread) {
   // if we come from shed_yield and we have waited for is_switching = false
   // successfully, the spinlock is unlocked only afterwards
 
-  assert(current->state_ != ThreadState::Terminating ||
-         thread->state_ != ThreadState::Undefined ||
-         current->state_ != ThreadState::Blocked);
+  assert(current->state != ThreadState::Terminating ||
+         thread->state != ThreadState::Undefined ||
+         current->state != ThreadState::Blocked);
 
-  current->affinity_cpu_ = CpuData::Current();
+  current->affinity_cpu = CpuData::Current();
 
   if (thread->is_user()) {
-    if (current->effective_process_ != thread->effective_process_) {
+    if (current->effective_process != thread->effective_process) {
       panic("activate other user thread process map");
     }
   }
 
   CPUDATA_STORE(current_thread, thread);
-  CPUDATA_STORE(kernel_stack_top, thread->kernel_stack_top_);
+  CPUDATA_STORE(kernel_stack_top, thread->kernel_stack_top);
 
   arch::sched_switch(current, thread);
 
   // we should be back now
   assert(current == CPUDATA_LOAD(current_thread));
-  assert(current->state_ != ThreadState::Terminating);
+  assert(current->state != ThreadState::Terminating);
 }
 
 void Scheduler::commit_reschedule() {
@@ -197,7 +197,7 @@ void Scheduler::commit_reschedule() {
 
   // no going back now
   next_thread_ = nullptr;
-  next->state_ = ThreadState::Switching;
+  next->state = ThreadState::Switching;
 
   guard.unlock();
 
@@ -207,14 +207,14 @@ void Scheduler::commit_reschedule() {
   current->lock_.lock();
 
   // in the process of switching off the stack
-  current->is_switching_.store(true, std::memory_order_relaxed);
+  current->is_switching.store(true, std::memory_order_relaxed);
 
   if (current != idle_thread_) {
     auto sguard = frg::guard(&lock_);
     insert(current, false);
   } else {
     // the idle thread always remains in a ready state
-    current->state_ = ThreadState::Queued;
+    current->state = ThreadState::Queued;
   }
 
   // will unlock current
@@ -234,7 +234,7 @@ void Scheduler::yield(Thread *current) {
     next = next_thread_;
     if (next) {
       next_thread_ = nullptr;
-      next->state_ = ThreadState::Switching;
+      next->state = ThreadState::Switching;
     } else {
       next = select_next(SchedPrio{0});
     }

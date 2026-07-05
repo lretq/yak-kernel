@@ -107,18 +107,18 @@ std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
   // the idle thread must not wait!
   assert(!thread.is_idle());
 
-  thread.wait_phase_ = WaitPhase::Committed;
-  thread.state_ = ThreadState::Blocked;
+  thread.wait_phase = WaitPhase::Committed;
+  thread.state = ThreadState::Blocked;
 
   CpuData::local_scheduler().yield(&thread);
   // yield() unlocks thread
   assert(iplget() == Ipl::dispatch);
 
-  for (auto &wb : thread.wait_blocks_)
+  for (auto &wb : thread.wait_blocks)
     wb_dequeue(wb);
 
   if (has_timeout) {
-    wb_dequeue(thread.timeout_waitblock_);
+    wb_dequeue(thread.timeout_waitblock);
     // This might try to uninstall a non-queued timer,
     // but that is handled in timer_uninstall
     /// timer_uninstall(&thread->timeout_timer);
@@ -126,9 +126,9 @@ std::expected<int, Status> do_wait(Thread &thread, bool has_timeout) {
   }
 
   auto guard = thread.lock_guard();
-  thread.wait_phase_ = WaitPhase::None;
+  thread.wait_phase = WaitPhase::None;
 
-  return thread.wait_status_;
+  return thread.wait_status;
 }
 
 WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
@@ -154,7 +154,7 @@ WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
   if (table_opt.has_value()) {
     table = *table_opt;
   } else {
-    table = std::span<WaitBlock>(thread.inline_waitblocks_,
+    table = std::span<WaitBlock>(thread.inline_waitblocks,
                                  THREAD_INLINE_WAIT_BLOCKS);
   }
 
@@ -172,9 +172,9 @@ WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
 
   {
     auto guard = thread.lock_guard();
-    thread.wait_phase_ = WaitPhase::InProgress;
-    thread.timeout_waitblock_.flags_ = 0;
-    thread.wait_blocks_ = table;
+    thread.wait_phase = WaitPhase::InProgress;
+    thread.timeout_waitblock.flags_ = 0;
+    thread.wait_blocks = table;
   }
 
   // Check signaled and enqueue
@@ -190,7 +190,7 @@ WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
 
       {
         auto tguard = thread.lock_guard();
-        thread.wait_phase_ = WaitPhase::None;
+        thread.wait_phase = WaitPhase::None;
       }
 
       return i;
@@ -210,12 +210,12 @@ WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
   thread.lock_.lock();
 
   // Handle abort
-  if (thread.wait_phase_ == WaitPhase::Aborted) {
-    auto wait_status = thread.wait_status_;
+  if (thread.wait_phase == WaitPhase::Aborted) {
+    auto wait_status = thread.wait_status;
     thread.lock_.unlock();
 
     if (has_timeout) {
-      wb_dequeue(thread.timeout_waitblock_);
+      wb_dequeue(thread.timeout_waitblock);
     }
 
     for (auto &wb : table)
@@ -223,7 +223,7 @@ WaitResult wait_for_impl(std::span<KObject *> objects, WaitMode mode,
 
     {
       auto guard = thread.lock_guard();
-      thread.wait_phase_ = WaitPhase::None;
+      thread.wait_phase = WaitPhase::None;
     }
 
     return wait_status;

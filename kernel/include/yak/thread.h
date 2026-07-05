@@ -73,7 +73,7 @@ public:
   [[noreturn]]
   static void exit_current();
 
-  Thread(frg::string_view name, SchedPrio initial_priority,
+  Thread(frg::string_view thread_name, SchedPrio initial_priority,
          Process *parent_process, Type thread_type = Type::KernelThread);
 
   void init_context(void *kstack_top, ThreadEntryFn entry, void *ctx1,
@@ -82,7 +82,7 @@ public:
   void unwait(WaitResult res);
 
   bool is_kernel() const {
-    return thread_type_ != Thread::Type::KernelThread;
+    return thread_type_ != Thread::Type::UserThread;
   }
 
   bool is_user() const {
@@ -99,39 +99,35 @@ public:
 
 public:
   arch::ThreadPcb md;
+  ThreadState state;
 
-private:
-  Spinlock lock_;
+  SchedPrio base_priority;
+  SchedPrio priority;
 
-public:
-  ThreadState state_;
+  Process *parent_process;
+  Process *effective_process;
 
-  SchedPrio base_priority_;
-  SchedPrio priority_;
+  CpuData *affinity_cpu = nullptr;
+  CpuData *last_cpu = nullptr;
 
-  Process *parent_process_;
-  Process *effective_process_;
+  void *kernel_stack_top = nullptr;
 
-  CpuData *affinity_cpu_ = nullptr;
-  CpuData *last_cpu_ = nullptr;
+  std::atomic<bool> is_switching;
 
-  void *kernel_stack_top_ = nullptr;
+  char name[THREAD_MAX_NAME_LEN];
 
-  std::atomic<bool> is_switching_;
+  WaitBlock inline_waitblocks[THREAD_INLINE_WAIT_BLOCKS];
+  WaitBlock timeout_waitblock;
 
-  char name_[THREAD_MAX_NAME_LEN];
-
-  WaitBlock inline_waitblocks_[THREAD_INLINE_WAIT_BLOCKS];
-  WaitBlock timeout_waitblock_;
-
-  WaitPhase wait_phase_;
-  WaitResult wait_status_;
-  std::span<WaitBlock> wait_blocks_;
+  WaitPhase wait_phase;
+  WaitResult wait_status;
+  std::span<WaitBlock> wait_blocks;
 
   frg::default_list_hook<Thread> list_hook;
   frg::default_list_hook<Thread> queue_hook;
 
 private:
+  Spinlock lock_;
   const Type thread_type_;
 };
 

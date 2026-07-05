@@ -76,7 +76,7 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
 
   arch::early_init();
 
-  bsp_idle_thread.kernel_stack_top_ = bsp_idle_stack_top;
+  bsp_idle_thread.kernel_stack_top = bsp_idle_stack_top;
   bsp_cpu_data.bootstrap_scheduler(&bsp_idle_thread);
 
   // We now have defined thread-state;
