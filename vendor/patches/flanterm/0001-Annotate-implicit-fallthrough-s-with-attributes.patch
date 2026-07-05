@@ -1,0 +1,66 @@
+From a64c37865dc831c5278b3023fbfb6249b4849a16 Mon Sep 17 00:00:00 2001
+From: Vincent Schweiger <vincent.schweiger@icloud.com>
+Date: Sun, 5 Jul 2026 14:10:15 +0200
+Subject: [PATCH] Annotate implicit fallthrough's with attributes
+
+---
+ src/flanterm.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/flanterm.c b/src/flanterm.c
+index e04d3a5..7a2a6b8 100644
+--- a/src/flanterm.c
++++ b/src/flanterm.c
+@@ -755,6 +755,7 @@ static void control_sequence_parse(struct flanterm_context *ctx, uint8_t c) {
+         case 'F':
+             x = 0;
+             // FALLTHRU
++            [[fallthrough]];
+         case 'A': {
+             if (ctx->esc_values[0] > y)
+                 ctx->esc_values[0] = y;
+@@ -769,7 +770,9 @@ static void control_sequence_parse(struct flanterm_context *ctx, uint8_t c) {
+         case 'E':
+             x = 0;
+             // FALLTHRU
++            [[fallthrough]];
+         case 'e':
++            [[fallthrough]];
+         case 'B': {
+             if (y + ctx->esc_values[0] > ctx->rows - 1)
+                 ctx->esc_values[0] = (ctx->rows - 1) - y;
+@@ -782,6 +785,7 @@ static void control_sequence_parse(struct flanterm_context *ctx, uint8_t c) {
+             break;
+         }
+         case 'a':
++            [[fallthrough]];
+         case 'C':
+             if (x + ctx->esc_values[0] > ctx->cols - 1)
+                 ctx->esc_values[0] = (ctx->cols - 1) - x;
+@@ -813,6 +817,7 @@ static void control_sequence_parse(struct flanterm_context *ctx, uint8_t c) {
+             break;
+         }
+         case 'G':
++            [[fallthrough]];
+         case '`':
+             if (ctx->esc_values[0] != 0) {
+                 ctx->esc_values[0]--;
+@@ -822,6 +827,7 @@ static void control_sequence_parse(struct flanterm_context *ctx, uint8_t c) {
+             ctx->set_cursor_pos(ctx, ctx->esc_values[0], y);
+             break;
+         case 'H':
++            [[fallthrough]];
+         case 'f': {
+             if (ctx->esc_values[0] != 0) {
+                 ctx->esc_values[0]--;
+@@ -959,6 +965,7 @@ static void control_sequence_parse(struct flanterm_context *ctx, uint8_t c) {
+                 ctx->move_character(ctx, i - ctx->esc_values[0], y, i, y);
+             ctx->set_cursor_pos(ctx, ctx->cols - ctx->esc_values[0], y);
+             // FALLTHRU
++            [[fallthrough]];
+         case 'X': {
+             size_t cx, cy;
+             ctx->get_cursor_pos(ctx, &cx, &cy);
+-- 
+2.55.0
+
