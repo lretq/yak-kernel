@@ -14,8 +14,9 @@ constexpr size_t PFNDB_SIZE =
     4ULL * 1024 * 1024 * 1024 * 1024; // 4TiB ought to be enough for anybody:
                                       // 4TiB/64B*4096=describe 256TiB of memory
 
-constexpr vaddr_t KERNEL_WIRED_HEAP_BASE = 0xffffc40000000000; // -60TiB
-constexpr size_t KERNEL_WIRED_HEAP_SIZE = 4ULL * 1024 * 1024 * 1024 * 1024;
+constexpr vaddr_t KERNEL_HEAP_BASE = 0xffffc40000000000;       // -60TiB
+constexpr size_t KERNEL_HEAP_SIZE = 2ULL * 1024 * 1024 * 1024; // 2GiB
+constexpr vaddr_t KERNEL_HEAP_MAP = KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE;
 
 constexpr size_t PAGE_SIZE = 4096;
 constexpr unsigned int PAGE_SHIFT = 12;

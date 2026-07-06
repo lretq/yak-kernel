@@ -14,9 +14,14 @@
 
 namespace yak {
 
+using BuddyPageList =
+    frg::intrusive_list<Page,
+                        frg::locate_member<Page, frg::default_list_hook<Page>,
+                                           &Page::buddy_page_hook>>;
+
 struct MemoryDomain {
   Spinlock lock;
-  PageList free_list[CONFIG_FREELIST_ORDERS];
+  BuddyPageList free_list[CONFIG_FREELIST_ORDERS];
 
   std::optional<Page *> allocate(unsigned int desired_order);
   void free(Page *page);

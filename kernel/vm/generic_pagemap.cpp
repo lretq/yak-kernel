@@ -19,6 +19,8 @@
  * operations should remain in arch-specific helpers.
  */
 
+#include "yak/vm/page.h"
+#include "yak/vm/pmm.h"
 #define pr_fmt(fmt) "generic-pagemap: " fmt
 
 #include <iterator>
@@ -60,6 +62,44 @@ template <typename Traits>
 void GenericPageMap<Traits>::enter_boot(vaddr_t va, paddr_t pa, VMProt prot,
                                         VMCache cache, size_t level) {
   AtomicPte *ptep = fetch(va, level, true, true);
+  assert(ptep);
+
+  Pte pte = ptep->load(std::memory_order_acquire);
+  if (!Traits::pte_is_zero(pte)) [[unlikely]] {
+    panic("try to overwrite mapping directly during boot phase!");
+  }
+
+  Pte new_pte = Traits::make_leaf(pa, level, prot, cache);
+  if (!ptep->compare_exchange_strong(pte, new_pte, std::memory_order_acquire,
+                                     std::memory_order_relaxed)) {
+    panic("PageMap::enter race!\n");
+  }
+
+  if (!Traits::pte_is_zero(pte)) {
+    // Overwrote old mapping: Check if we need to TLB shootdown
+    // TODO: invalidate
+  }
+}
+
+template <typename Traits>
+std::optional<paddr_t> GenericPageMap<Traits>::reverse_lookup(vaddr_t va,
+                                                              size_t level) {
+  AtomicPte *ptep = fetch(va, level, false, false);
+  if (!ptep)
+    return std::nullopt;
+
+  Pte pte = ptep->load(std::memory_order_acquire);
+  if (Traits::pte_is_zero(pte)) {
+    return std::nullopt;
+  }
+
+  return Traits::pte_addr(pte);
+}
+
+template <typename Traits>
+void GenericPageMap<Traits>::enter(vaddr_t va, paddr_t pa, VMProt prot,
+                                   VMCache cache, size_t level) {
+  AtomicPte *ptep = fetch(va, level, true, false);
   assert(ptep);
 
   Pte pte = ptep->load(std::memory_order_acquire);
@@ -186,7 +226,9 @@ GenericPageMap<Traits>::fetch(vaddr_t va, size_t to_level, bool allocate,
                                                   arch::PAGE_SIZE, NUMA_LOCAL),
                     "boot pagemap oom");
       } else {
-        panic("not defined\n");
+        pa =
+            expect(pmm_alloc(0, PageUse::Wired, ALLOC_ZERO), "boot pagemap oom")
+                ->to_pa();
       }
       assert(pa != 0);
 

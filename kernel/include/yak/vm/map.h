@@ -9,11 +9,12 @@ public:
   void activate();
 
   inline PageMap &page_map() {
-    return pm;
+    return pm_;
+  }
   }
 
 private:
-  PageMap pm;
+  PageMap pm_;
 };
 
 extern VmMap kmap;

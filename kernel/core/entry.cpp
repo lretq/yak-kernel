@@ -1,5 +1,7 @@
 #include "yak/ipl-guard.h"
 #include "yak/sched_prio.h"
+#include "yak/vm/generic_slab.h"
+#include "yak/vm/object_cache.h"
 #include <cstddef>
 #include <span>
 #include <yak/arch.h>
@@ -58,6 +60,14 @@ extern void test_fn();
 
 Thread bsp_idle_thread = Thread("idle_thread0", SchedPrio::Idle,
                                 &kernel_process, Thread::Type::IdleThread);
+
+static inline uint64_t rdtscp(void) {
+  uint32_t lo, hi, aux;
+  asm volatile("rdtscp" : "=a"(lo), "=d"(hi), "=c"(aux));
+  return ((uint64_t) hi << 32) | lo;
+}
+
+struct Foo {};
 
 extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   arch::early_output_init();
@@ -141,32 +151,22 @@ extern "C" void kernel_entry(void *bsp_idle_stack_top) {
   ev.alarm();
   ev.clear();
 
+  pr_info("start\n");
+  auto start = rdtscp();
+  GenericSlabCache cache_test = GenericSlabCache("test", 128, 16);
+  for (int i = 0; i < 1000000; i++) {
+    auto ptr = cache_test.allocate();
+    cache_test.deallocate(ptr);
+  }
+  auto end = rdtscp();
+  uint64_t cycles = end - start;
+  pr_info("cycles: %ld\n", cycles);
+
+  auto objcache = ObjectCache<Foo>("test2");
+  objcache.construct();
+
   // XXX: rather run this on the kmain thread!
   init_engine.run();
-
-  auto buf_pg = expect(pmm_alloc(2, PageUse::Wired, 0), "test");
-  auto window = expect(MapWindow::create(buf_pg->to_pa(), buf_pg->block_size()),
-                       "could not map buf_pg");
-  Page **buf_allocs = window.as<Page *>();
-  size_t n_allocs = (1 << (2 + 12)) / sizeof(Page *);
-  pr_debug("buf_allocs:%p\n", buf_allocs);
-  pr_debug("n_allocs:%zu\n", n_allocs);
-
-  for (size_t i = 0; i < n_allocs; i++) {
-    buf_allocs[i] = expect(pmm_alloc(1, PageUse::Wired, ALLOC_ZERO), "oom :(");
-  }
-
-  for (size_t i = 0; i < n_allocs; i++) {
-    buf_allocs[i]->release();
-    buf_allocs[i] = nullptr;
-  }
-
-  buf_pg->release();
-
-  auto fib = [](this auto self, int n) -> int {
-    return n <= 1 ? n : self(n - 1) + self(n - 2);
-  };
-  pr_debug("deduced \"this\" test: fib(10)=%d\n", fib(10));
 
   idle_loop();
 }

@@ -32,6 +32,10 @@ public:
     return aligned_ptr;
   }
 
+  inline size_t used() {
+    return capacity_ - offset_;
+  }
+
   inline void reset() {
     offset_ = 0;
   }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <yak/vm/address.h>
 #include <yak/vm/flags.h>
 
@@ -12,6 +13,8 @@ template <typename Traits> class GenericPageMap {
 
 public:
   void activate();
+
+  std::optional<paddr_t> reverse_lookup(vaddr_t va, size_t level);
 
   void enter(vaddr_t va, paddr_t pa, VMProt prot, VMCache cache, size_t level);
 

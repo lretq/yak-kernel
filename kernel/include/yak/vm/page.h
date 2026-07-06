@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bit>
+#include <cstdint>
 #include <frg/intrusive.hpp>
 #include <frg/list.hpp>
 #include <yak/arch-mm.h>
@@ -13,16 +14,37 @@ enum class PageUse {
   Reserved,
   Free,
   Wired,
+  Slab,
+};
+
+class GenericSlabCache;
+struct FreeNode;
+struct Page;
+
+struct [[gnu::packed]] SlabMeta {
+  // The lower two bits are masked before accessing
+  Page *slab_head_or_next;
+  Page *slab_prev;
+  FreeNode *freelist;
+  uint16_t free_count;
 };
 
 struct [[gnu::aligned(64)]] Page {
   unsigned int domain = 0;
   PageUse usage = PageUse::Free;
-  size_t refcnt = 0;
-  unsigned int order = -1, block_order = -1;
-  bool buddy_needs_lazy_init = false;
+  uint32_t refcnt = 0;
+  unsigned short order = -1, block_order = -1;
 
-  frg::default_list_hook<Page> hook;
+  union {
+    // When PageUse = Slab
+    SlabMeta slab;
+
+    // When PageUse = Free/Reserved
+    struct {
+      bool buddy_needs_lazy_init = false;
+      frg::default_list_hook<Page> buddy_page_hook;
+    };
+  };
 
   inline size_t to_pfn() const {
     size_t off = (vaddr_t) this - arch::PFNDB_BASE;
@@ -48,8 +70,5 @@ struct [[gnu::aligned(64)]] Page {
 };
 
 static_assert(sizeof(Page) == 64);
-
-using PageList = frg::intrusive_list<
-    Page, frg::locate_member<Page, frg::default_list_hook<Page>, &Page::hook>>;
 
 } // namespace yak

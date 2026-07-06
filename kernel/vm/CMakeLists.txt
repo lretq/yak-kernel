@@ -4,6 +4,7 @@ yak_add_sources(
 	map.cpp
 	stack.cpp
 	direct.cpp
+	slab.cpp
 )
 
 if (CONFIG_USE_GENERIC_PAGEMAP)
