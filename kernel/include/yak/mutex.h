@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstdint>
+#include <atomic>
 #include <yak/event.h>
+#include <yak/spinlock.h>
 #include <yak/thread.h>
 
 namespace yak {
@@ -20,9 +21,11 @@ public:
   bool try_lock();
 
 private:
+  void slow_lock(Thread *current);
+
+  std::atomic<Thread *> owner;
   Event mutex_wake_;
-  Spinlock lock_;
-  Thread *owner;
+  Spinlock wait_lock_;
 };
 
 } // namespace yak

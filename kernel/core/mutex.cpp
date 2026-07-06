@@ -1,3 +1,4 @@
+#include <atomic>
 #include <frg/mutex.hpp>
 #include <yak/event.h>
 #include <yak/ipl-guard.h>
@@ -9,67 +10,79 @@
 namespace yak {
 Mutex::Mutex() : mutex_wake_(false, Event::Type::Synch) {}
 
+[[gnu::hot]]
 bool Mutex::try_lock() {
-  IplGuard ipl{Ipl::dispatch};
+  Thread *expected = nullptr;
 
-  auto guard = frg::guard(&lock_);
-
-  if (owner == nullptr) {
-    owner = Thread::current();
-    return true;
-  }
-  return false;
+  return owner.compare_exchange_strong(expected, Thread::current(),
+                                       std::memory_order_acq_rel,
+                                       std::memory_order_relaxed);
 }
 
-void Mutex::lock() {
+void Mutex::slow_lock(Thread *current) {
   IplGuard ipl{Ipl::dispatch};
-  auto current = Thread::current();
+  auto guard = frg::guard(&wait_lock_);
 
-  if (lock_.try_lock() && owner->state == ThreadState::Running) {
-    lock_.unlock();
+  while (true) {
+    Thread *o = owner.load(std::memory_order_acquire);
 
-    for (int spin = 0; spin < 100; ++spin) {
+    if (!o) {
       if (try_lock()) {
+        ++current->locks_held;
         return;
       }
-      busyloop_hint();
-    }
-  }
 
-  auto guard = frg::guard(&lock_);
-  while (owner != nullptr) {
-    {
-      auto owner_guard = owner->lock_guard();
-      if (owner->priority < current->priority) {
-        // We have to boost the owner's priority
-        // Stash the owner's current priority if the first in chain!
-        owner->set_priority_locked(current->priority);
-      }
+      continue;
     }
+
+    {
+      auto owner_guard = o->lock_guard();
+      if (owner.load(std::memory_order_acquire) != o)
+        continue;
+      if (o->priority < current->priority)
+        o->set_priority_locked(current->priority);
+    }
+
     guard.unlock();
-    auto _ = wait_for_single(mutex_wake_, WaitMode::Block);
+    wait_for_single(mutex_wake_, WaitMode::Block);
     guard.lock();
   }
+}
 
-  owner = current;
+[[gnu::hot]]
+void Mutex::lock() {
+  auto current = Thread::current();
 
-  if (current->locks_held++ == 0) {
+  if (current->locks_held == 0)
     current->stashed_priority = current->priority;
+
+  if (try_lock())
+    return;
+
+  for (int spin = 0; spin < 20; ++spin) {
+    if (try_lock())
+      return;
+    busyloop_hint();
   }
+
+  slow_lock(current);
 }
 
 void Mutex::unlock() {
-  IplGuard ipl{Ipl::dispatch};
-  auto guard = frg::guard(&lock_);
-
-  owner = nullptr;
-  mutex_wake_.alarm(true);
-
   auto current = Thread::current();
+  assert(owner.load(std::memory_order_relaxed) == current);
+
+  IplGuard ipl{Ipl::dispatch};
+  auto guard = frg::guard(&wait_lock_);
+
+  owner.store(nullptr, std::memory_order_release);
+
   if (--current->locks_held == 0) {
     // Lower priority back to stashed priority
     current->set_priority(current->stashed_priority);
   }
+
+  mutex_wake_.alarm(true);
 }
 
 } // namespace yak
